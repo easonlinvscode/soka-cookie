@@ -1,0 +1,23 @@
+:root {
+  --pink: #f50469;
+  --pink-dark: #c90050;
+  --pink-soft: #ff5d99;
+  --yellow: #ffe13b;
+  --yellow-dark: #f0b800;
+  --blue: #54c8ef;
+  --green: #58c766;
+  --orange: #ff8a34;
+  --cream: #fff9e9;
+  --white: #fff;
+  --ink: #20160f;
+  --muted: #6d5147;
+  --stroke: 4px;
+  --stroke-heavy: 6px;
+  --shadow: 7px 7px 0 var(--ink);
+  --radius-sm: 16px;
+  --radius-md: 26px;
+  --radius-lg: 42px;
+  --page: min(1180px, calc(100% - 32px));
+  --font-display: "Arial Rounded MT Bold", "PingFang TC", "Noto Sans TC", sans-serif;
+  --font-body: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}

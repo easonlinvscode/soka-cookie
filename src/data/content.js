@@ -4,11 +4,20 @@ export const divisions = [
 ]
 
 export const headquarters = [
-  { id: 'central', label: '中央本部', color: '#b996e8', initial: { men: 620, women: 540 } },
-  { id: 'west-coast', label: '西濱本部', color: '#ff8a34', initial: { men: 430, women: 710 } },
-  { id: 'yangxin', label: '楊新本部', color: '#58c766', initial: { men: 780, women: 360 } },
-  { id: 'zhongyuan', label: '中原本部', color: '#f50469', initial: { men: 250, women: 820 } },
+  { id: 'central', label: '中央本部', color: '#b996e8', initial: { men: 0, women: 0 } },
+  { id: 'west-coast', label: '西濱本部', color: '#ff8a34', initial: { men: 0, women: 0 } },
+  { id: 'yangxin', label: '楊新本部', color: '#58c766', initial: { men: 0, women: 0 } },
+  { id: 'zhongyuan', label: '中原本部', color: '#f50469', initial: { men: 0, women: 0 } },
 ]
+
+export const affiliations = [
+  { id: 'circle', label: '圈級', color: '#ffe13b' },
+  { id: 'district', label: '區級', color: '#54c8ef' },
+  ...headquarters.map(({ id, label, color }) => ({ id, label, color })),
+]
+
+export const circles = [{ id: 'taoyuan-2', label: '桃園二圈' }]
+export const districts = [{ id: 'taoyuan-west', label: '桃園西區' }]
 
 export const quotes = [
   {

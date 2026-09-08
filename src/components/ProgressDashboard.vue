@@ -1,115 +1,178 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import gsap from 'gsap'
-import { divisions, headquarters, TARGET_PER_TEAM } from '../data/content.js'
 import LuckyCookieJar from './LuckyCookieJar.vue'
-import littleBear from '../assets/characters/lucky-bear-final.png'
+import PersonalCalendar from './PersonalCalendar.vue'
+import { getGroupDetails } from '../services/firebaseService.js'
 import littleLion from '../assets/characters/little-lion-final.png'
-import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 
-const guideCharacters = [
-  { src: littleBear, alt: '拿著福運餅乾、揮手加油的小熊' },
-  { src: littleLion, alt: '在餅乾罐旁揮手加油的小獅子' },
-  { src: phoenixChick, alt: '在餅乾罐旁帶來鼓勵的小鳳雛' },
-]
-const guideCharacter = guideCharacters[Math.floor(Math.random() * guideCharacters.length)]
-
-const props = defineProps({ division: String, progress: Object, latestReport: Object, highlightLatestUpdate: Boolean })
-const emit = defineEmits(['update:division', 'report'])
-const dashboard = ref(null)
-const activeHeadquarters = ref('total')
-const currentDivision = computed(() => divisions.find(item => item.id === props.division))
-const divisionTotal = computed(() => headquarters.reduce((sum, hq) => sum + props.progress[hq.id][props.division], 0))
-const isDivisionTotal = computed(() => activeHeadquarters.value === 'total')
-const currentHeadquarters = computed(() => headquarters.find(item => item.id === activeHeadquarters.value))
-const currentTarget = computed(() => isDivisionTotal.value ? TARGET_PER_TEAM * headquarters.length : TARGET_PER_TEAM)
-const currentValue = computed(() => isDivisionTotal.value ? divisionTotal.value : props.progress[activeHeadquarters.value][props.division])
-const districtTotal = computed(() => headquarters.reduce((sum, hq) => sum + props.progress[hq.id].men + props.progress[hq.id].women, 0))
-const percentage = computed(() => Math.round(currentValue.value / currentTarget.value * 100))
-const displayedValue = ref(0)
-const displayedPercentage = ref(0)
-const showLatestUpdate = computed(() => props.highlightLatestUpdate
-  && props.latestReport?.division === props.division
-  && (isDivisionTotal.value || props.latestReport?.headquarters === activeHeadquarters.value))
-const counter = { value: 0, percentage: 0 }
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-let motionContext
-let scrollFrame
-
-watch(() => props.latestReport, report => {
-  if (report?.division === props.division) activeHeadquarters.value = 'total'
+const props = defineProps({
+  user: { type: Object, required: true },
+  profile: { type: Object, required: true },
+  reports: { type: Array, default: () => [] },
+  groups: { type: Array, default: () => [] },
+  groupsLoading: Boolean,
+  latestReport: Object,
+  highlightLatestUpdate: Boolean,
+  initialMode: { type: String, default: 'personal' },
 })
-function selectDivision(id) {
-  emit('update:division', id)
-  activeHeadquarters.value = 'total'
+
+const emit = defineEmits(['report', 'groups', 'route'])
+const dashboard = ref(null)
+const viewMode = ref(props.initialMode === 'groups' ? 'groups' : 'personal')
+const groupProgress = ref([])
+const progressLoading = ref(false)
+const progressError = ref('')
+const displayedMinutes = ref(0)
+const displayedChants = ref(0)
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+const counter = { minutes: 0, chants: 0 }
+let motionContext
+
+function timestampToDate(value) {
+  if (!value) return null
+  if (value instanceof Date) return value
+  if (typeof value.toDate === 'function') return value.toDate()
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000)
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
-function animateProgress(animateJar = true, delay = 0) {
-  const nextValue = currentValue.value
-  const nextPercentage = percentage.value
+function formatDate(value) {
+  const date = timestampToDate(value)
+  if (!date) return '尚未開始'
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const personalReports = computed(() => {
+  const items = [...props.reports]
+  if (props.latestReport?.userId === props.user.uid && !items.some((item) => item.id === props.latestReport.id)) {
+    items.push(props.latestReport)
+  }
+  return items
+})
+const personalMinutes = computed(() => personalReports.value.reduce((sum, item) => sum + Number(item.minutes || 0), 0))
+const personalChants = computed(() => personalReports.value.reduce((sum, item) => sum + Number(item.chants || 0), 0))
+const personalStartDate = computed(() => {
+  const reportDates = personalReports.value.map((item) => timestampToDate(item.createdAt)).filter(Boolean)
+  if (reportDates.length) return new Date(Math.min(...reportDates.map((date) => date.getTime())))
+  return timestampToDate(props.profile.createdAt)
+})
+const jarTarget = computed(() => Math.max(1000, personalMinutes.value))
+const hasFreshPersonalReport = computed(() => props.highlightLatestUpdate && props.latestReport?.userId === props.user.uid)
+
+function animatePersonalTotals() {
+  const minutes = personalMinutes.value
+  const chants = personalChants.value
   if (reducedMotion.matches) {
-    displayedValue.value = nextValue
-    displayedPercentage.value = nextPercentage
+    displayedMinutes.value = minutes
+    displayedChants.value = chants
     return
   }
   gsap.killTweensOf(counter)
-  counter.value = displayedValue.value
-  counter.percentage = displayedPercentage.value
+  counter.minutes = displayedMinutes.value
+  counter.chants = displayedChants.value
   gsap.to(counter, {
-    value: nextValue,
-    percentage: nextPercentage,
+    minutes,
+    chants,
     duration: 1.05,
-    delay,
     ease: 'power3.out',
     onUpdate: () => {
-      displayedValue.value = counter.value
-      displayedPercentage.value = counter.percentage
+      displayedMinutes.value = counter.minutes
+      displayedChants.value = counter.chants
     },
   })
-  if (animateJar && dashboard.value) {
-    gsap.fromTo(dashboard.value.querySelector('.jar-visual'),
-      { autoAlpha: .2, scale: .94, rotation: -1.5 },
-      { autoAlpha: 1, scale: 1, rotation: 0, duration: .62, ease: 'back.out(1.35)', clearProps: 'transform' })
+}
+
+async function loadGroupProgress() {
+  if (!props.groups.length) {
+    groupProgress.value = []
+    progressError.value = ''
+    progressLoading.value = false
+    return
+  }
+  progressLoading.value = true
+  progressError.value = ''
+  const results = await Promise.allSettled(props.groups.map((group) => getGroupDetails(group.id)))
+  const loaded = []
+  results.forEach((result, index) => {
+    if (result.status !== 'fulfilled') return
+    const source = props.groups[index]
+    const { group, members, contributions } = result.value
+    const unitKey = group.targetType === 'minutes' ? 'minutes' : 'chants'
+    const unitLabel = unitKey === 'minutes' ? '分鐘' : '遍'
+    const total = contributions.reduce((sum, item) => sum + Number(item[unitKey] || 0), 0)
+    const mine = contributions
+      .filter((item) => item.userId === props.user.uid)
+      .reduce((sum, item) => sum + Number(item[unitKey] || 0), 0)
+    const target = Number(group.targetValue || 0)
+    const endDate = timestampToDate(group.endDate)
+    loaded.push({
+      ...group,
+      membership: source.membership,
+      total,
+      mine,
+      target,
+      unitLabel,
+      memberCount: members.length,
+      percentage: target > 0 ? Math.min(100, Math.round(total / target * 100)) : 0,
+      ended: group.status !== 'active' || Boolean(endDate && endDate < new Date()),
+      statusLabel: group.status === 'archived'
+        ? '群組已封存'
+        : (group.status === 'ended' || (endDate && endDate < new Date()) ? '挑戰已結束' : '挑戰進行中'),
+      justUpdated: props.highlightLatestUpdate && props.latestReport?.groupIds?.includes(group.id),
+    })
+  })
+  groupProgress.value = loaded
+  if (loaded.length !== props.groups.length) progressError.value = '部分群組進度暫時無法讀取，請稍後再試。'
+  progressLoading.value = false
+  await nextTick()
+  if (!reducedMotion.matches && viewMode.value === 'groups') {
+    gsap.fromTo('.group-progress-card', { y: 22, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .42, stagger: .08, ease: 'power2.out' })
   }
 }
 
-watch([currentValue, () => props.division, activeHeadquarters], async () => {
-  await nextTick()
-  animateProgress(true)
+function selectMode(mode) {
+  viewMode.value = mode
+  emit('route', mode)
+  if (mode === 'groups' && props.groups.length) loadGroupProgress()
+}
+
+watch(() => props.initialMode, (mode) => {
+  const nextMode = mode === 'groups' ? 'groups' : 'personal'
+  if (viewMode.value === nextMode) return
+  viewMode.value = nextMode
+  if (nextMode === 'groups' && props.groups.length) loadGroupProgress()
 })
 
+watch([personalMinutes, personalChants], async () => {
+  await nextTick()
+  animatePersonalTotals()
+}, { immediate: true })
+
+watch(
+  () => props.groups.map((group) => `${group.id}:${group.updatedAt?.seconds || ''}`).join('|'),
+  () => {
+    groupProgress.value = []
+    if (viewMode.value === 'groups') loadGroupProgress()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  scrollFrame = requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' })
-  })
   motionContext = gsap.context(() => {
-    animateProgress(false, .52)
     if (reducedMotion.matches) return
-    gsap.from('.jar-stage', { y: 35, autoAlpha: 0, scale: .98, duration: .65, ease: 'power3.out' })
-    gsap.from('.jar-companion', { y: 110, autoAlpha: 0, scale: .58, rotation: -18, duration: .82, ease: 'back.out(1.8)', delay: .28 })
-    gsap.to('.jar-companion', {
-      y: -12,
-      rotation: 3,
-      scale: 1.025,
-      duration: 1.9,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut',
-      delay: 1.05,
-    })
-    gsap.from('.compact-heading, .division-tabs, .headquarters-tabs, .selection-label, .jar-copy h2, .main-number, .jar-copy > p, .meter, .meter-labels, .summary-grid, .report-action', {
-      x: 32,
-      autoAlpha: 0,
-      stagger: .055,
-      duration: .42,
-      ease: 'power2.out',
-      delay: .18,
-    })
+    gsap.from('.progress-heading, .view-tabs', { y: -16, autoAlpha: 0, duration: .48, stagger: .08, ease: 'power2.out' })
+    gsap.from('.personal-visual', { x: -30, autoAlpha: 0, duration: .62, ease: 'power3.out', delay: .12 })
+    gsap.from('.personal-copy > *', { x: 24, autoAlpha: 0, duration: .42, stagger: .06, ease: 'power2.out', delay: .16 })
+    gsap.to('.jar-companion', { y: -12, rotation: 3, duration: 1.75, repeat: -1, yoyo: true, ease: 'sine.inOut' })
   }, dashboard.value)
 })
 
 onUnmounted(() => {
-  cancelAnimationFrame(scrollFrame)
   gsap.killTweensOf(counter)
   motionContext?.revert()
 })
@@ -118,162 +181,110 @@ onUnmounted(() => {
 <template>
   <section ref="dashboard" class="progress-section">
     <div class="progress-wrap">
-      <article class="jar-stage comic-panel">
-        <div class="jar-visual">
-          <div v-if="showLatestUpdate" class="latest-badge">剛剛更新!</div>
-          <img class="jar-companion" :src="guideCharacter.src" :alt="guideCharacter.alt">
-          <LuckyCookieJar :value="currentValue" :target="currentTarget" :variant-key="`${division}-${activeHeadquarters}`"
-            :celebrate="showLatestUpdate" />
-        </div>
+      <header class="progress-heading">
+        <span>MY COOKIE PROGRESS</span>
+        <h1>查看進度</h1>
+      </header>
 
-        <div class="jar-copy">
-          <span class="selection-label" :class="{ women: division === 'women' }">{{ isDivisionTotal ? `${currentDivision.label} TOTAL` : `${currentDivision.label}／${currentHeadquarters.label}` }}</span>
-          <h2>{{ isDivisionTotal ? `${currentDivision.label}目前總累積` : '這一罐已經裝了' }}</h2>
-          <strong class="main-number">{{ Math.round(displayedValue).toLocaleString() }}<small>分鐘</small></strong>
-          <p>{{ Math.round(displayedValue * 60).toLocaleString() }} 遍的幸運能量</p>
-          <div class="meter" :aria-label="`完成 ${percentage}%`"><i :style="{ width: Math.min(100, displayedPercentage) + '%' }"></i></div>
-          <div class="meter-labels"><span>0</span><strong>{{ Math.round(displayedPercentage) }}%</strong><span>{{ currentTarget.toLocaleString() }} 分鐘</span></div>
-          <div class="summary-grid">
-            <div v-if="isDivisionTotal"><span>四個本部共同目標</span><strong>{{ currentTarget.toLocaleString() }}</strong><small>分鐘</small></div>
-            <div v-else><span>{{ currentDivision.label }}總累積</span><strong>{{ divisionTotal.toLocaleString() }}</strong><small>/ 4,000 分鐘</small></div>
-            <div><span>{{ isDivisionTotal ? `距離${currentDivision.label}目標` : '距離本罐目標' }}</span><strong>{{ Math.max(0, currentTarget - currentValue).toLocaleString() }}</strong><small>分鐘</small></div>
-          </div>
-          <div v-if="percentage >= 100" class="complete-message">★ 已經裝滿，繼續累積更多幸運！</div>
-          <div class="progress-options">
-            <div class="division-tabs" role="tablist" aria-label="切換部別">
-              <button v-for="item in divisions" :key="item.id" type="button" role="tab"
-                :aria-selected="division === item.id" :class="{ active: division === item.id }"
-                @click="selectDivision(item.id)">{{ item.icon }} {{ item.label }}</button>
-            </div>
-            <div class="headquarters-tabs" aria-label="選擇總覽或本部">
-              <button type="button" class="total-option" :class="{ active: isDivisionTotal, women: division === 'women' }"
-                @click="activeHeadquarters = 'total'">
-                {{ currentDivision.label }}總覽<small>{{ Math.round(divisionTotal / (TARGET_PER_TEAM * headquarters.length) * 100) }}%</small>
-              </button>
-              <button v-for="hq in headquarters" :key="hq.id" type="button"
-                :class="{ active: activeHeadquarters === hq.id }" :style="{ '--hq-color': hq.color }"
-                @click="activeHeadquarters = hq.id">
-                {{ hq.label }}<small>{{ Math.round(progress[hq.id][division] / TARGET_PER_TEAM * 100) }}%</small>
-              </button>
-            </div>
-          </div>
-          <div class="report-action">
-            <button class="comic-button" type="button" @click="$emit('report')">再回報一次</button>
-          </div>
-        </div>
-      </article>
-
-      <div class="district-ribbon">
-        <span>桃園西區總累積</span><strong>{{ districtTotal.toLocaleString() }} 分鐘</strong>
-        <small>{{ (districtTotal * 60).toLocaleString() }} 遍 · 共同目標 8,000 分鐘</small>
+      <div class="view-tabs" role="tablist" aria-label="選擇進度內容">
+        <button type="button" role="tab" :aria-selected="viewMode === 'personal'" :class="{ active: viewMode === 'personal' }" @click="selectMode('personal')">個人進度</button>
+        <button type="button" role="tab" :aria-selected="viewMode === 'groups'" :class="{ active: viewMode === 'groups' }" @click="selectMode('groups')">群組進度</button>
       </div>
+
+      <Transition name="progress-switch" mode="out-in">
+        <div v-if="viewMode === 'personal'" key="personal" class="personal-view">
+          <article class="personal-panel comic-panel">
+            <div class="personal-visual">
+              <div v-if="hasFreshPersonalReport" class="latest-badge">剛剛更新!</div>
+              <img class="jar-companion" :src="littleLion" alt="拿著福運餅乾、替你加油的小獅子">
+              <LuckyCookieJar :value="personalMinutes" :target="jarTarget" variant-key="personal-progress" :celebrate="hasFreshPersonalReport" />
+            </div>
+
+            <div class="personal-copy">
+              <span class="personal-label" :class="profile.division">{{ profile.displayName }}的個人進度</span>
+              <h2>我的累積</h2>
+              <p class="start-date">從 <strong>{{ formatDate(personalStartDate) }}</strong> 開始</p>
+
+              <div class="personal-stats">
+                <div>
+                  <span>目前已累積</span>
+                  <strong>{{ Math.round(displayedMinutes).toLocaleString() }}</strong>
+                  <small>分鐘</small>
+                </div>
+                <div>
+                  <span>目前已累積</span>
+                  <strong>{{ Math.round(displayedChants).toLocaleString() }}</strong>
+                  <small>遍</small>
+                </div>
+              </div>
+
+              <p v-if="!personalReports.length" class="personal-empty">還沒有回報紀錄，完成第一次回報後，餅乾就會開始累積。</p>
+              <p v-else class="report-count">已完成 {{ personalReports.length.toLocaleString() }} 次回報</p>
+              <button class="comic-button pink" type="button" @click="emit('report')">再回報一次</button>
+            </div>
+          </article>
+          <PersonalCalendar :user="user" :profile="profile" :reports="reports" :groups="groups" />
+        </div>
+
+        <div v-else key="groups" class="group-progress-view">
+          <article v-if="groupsLoading || progressLoading" class="status-panel comic-panel" aria-live="polite">
+            <span class="status-cookie" aria-hidden="true">★</span>
+            <h2>正在整理群組進度…</h2>
+          </article>
+
+          <article v-else-if="!groups.length" class="status-panel empty-panel comic-panel">
+            <span class="status-cookie" aria-hidden="true">♡</span>
+            <h2>尚未加入任何群組</h2>
+            <p>個人進度會繼續累積；建立群組或輸入邀請碼後，就能在這裡查看共同挑戰。</p>
+            <div class="empty-actions">
+              <button class="comic-button" type="button" @click="emit('groups')">建立或加入群組</button>
+              <button class="comic-button secondary" type="button" @click="selectMode('personal')">查看個人進度</button>
+            </div>
+          </article>
+
+          <div v-else class="group-progress-list">
+            <p v-if="progressError" class="progress-error" role="alert">{{ progressError }}</p>
+            <article v-for="group in groupProgress" :key="group.id" class="group-progress-card comic-panel" :class="{ expired: group.ended }" role="link" tabindex="0" :aria-label="`開啟群組：${group.name}`" @click="emit('groups', group.id)" @keydown.enter.prevent="emit('groups', group.id)" @keydown.space.prevent="emit('groups', group.id)">
+              <header>
+                <div>
+                  <span class="group-state">{{ group.statusLabel }}</span>
+                  <h2>{{ group.name }}</h2>
+                </div>
+                <span v-if="group.justUpdated" class="updated-chip">剛剛更新!</span>
+              </header>
+              <p class="group-description">{{ group.description }}</p>
+              <p class="group-dates">{{ formatDate(group.createdAt) }} 開始　／　{{ formatDate(group.endDate) }} 完成</p>
+              <div class="group-meter progress-breathe" :aria-label="`${group.name} 已完成 ${group.percentage}%`">
+                <i :style="{ width: `${group.percentage}%` }"></i>
+              </div>
+              <div class="group-meter-copy">
+                <strong>{{ group.total.toLocaleString() }}／{{ group.target.toLocaleString() }} {{ group.unitLabel }}</strong>
+                <span>{{ group.percentage }}%</span>
+              </div>
+              <div class="group-stats">
+                <div><span>我的貢獻</span><strong>{{ group.mine.toLocaleString() }} {{ group.unitLabel }}</strong></div>
+                <div><span>群組成員</span><strong>{{ group.memberCount }} 人</strong></div>
+                <div><span>我的身分</span><strong>{{ group.ownerId === user.uid ? '建立者' : '成員' }}</strong></div>
+              </div>
+              <span class="open-group-hint">查看群組內容 →</span>
+            </article>
+            <button class="manage-groups comic-button secondary" type="button" @click="emit('groups')">管理我的群組</button>
+          </div>
+        </div>
+      </Transition>
     </div>
   </section>
 </template>
 
 <style scoped>
-.progress-section{min-height:calc(100vh - 86px);padding:54px 0 100px;background-color:var(--cream);background-image:linear-gradient(45deg,rgba(245,4,105,.07) 25%,transparent 25%),linear-gradient(-45deg,rgba(245,4,105,.07) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(245,4,105,.07) 75%),linear-gradient(-45deg,transparent 75%,rgba(245,4,105,.07) 75%);background-size:38px 38px;background-position:0 0,0 19px,19px -19px,-19px 0}.progress-wrap{width:var(--page);margin:auto}.progress-heading{text-align:center}.progress-heading>span{display:inline-block;padding:6px 13px;border:3px solid var(--ink);border-radius:999px;background:var(--blue);box-shadow:4px 4px 0 var(--ink);font-weight:1000}.progress-heading h1{margin:18px 0 26px;color:var(--pink);font-family:var(--font-display);font-size:clamp(3rem,7vw,5.5rem);line-height:.93;-webkit-text-stroke:4px var(--ink);paint-order:stroke fill;text-shadow:6px 7px 0 var(--yellow),10px 12px 0 var(--ink)}.progress-heading h1 strong{color:white}.district-ribbon{width:fit-content;max-width:100%;margin:0 auto 32px;padding:12px 24px;border:4px solid var(--ink);border-radius:999px;background:var(--yellow);box-shadow:5px 5px 0 var(--ink);text-align:center}.district-ribbon span,.district-ribbon strong,.district-ribbon small{margin:0 5px;font-weight:900}.district-ribbon strong{color:var(--pink);font-family:var(--font-display);font-size:1.25rem}.division-tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;width:min(580px,100%);margin:0 auto 20px}.division-tabs button{min-height:60px;border:4px solid var(--ink);border-radius:999px;background:white;box-shadow:5px 5px 0 var(--ink);font-family:var(--font-display);font-size:1.15rem;font-weight:1000;cursor:pointer}.division-tabs button.active{background:var(--pink);color:white;transform:translate(2px,2px);box-shadow:3px 3px 0 var(--ink)}.division-tabs button:first-child.active{background:var(--blue);color:var(--ink)}.headquarters-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 auto 30px}.headquarters-tabs button{min-height:64px;padding:8px 12px;border:3px solid var(--ink);border-radius:16px;background:white;box-shadow:4px 4px 0 var(--ink);font-weight:1000;cursor:pointer}.headquarters-tabs button small{display:block;margin-top:2px}.headquarters-tabs button.active{background:var(--hq-color);transform:translateY(3px);box-shadow:2px 2px 0 var(--ink)}.jar-stage{display:grid;grid-template-columns:minmax(500px,1.08fr) minmax(390px,.92fr);align-items:center;gap:clamp(24px,3vw,42px);padding:clamp(28px,5vw,62px);background:#fff3b3}.jar-visual{position:relative;display:grid;grid-template-columns:minmax(145px,175px) minmax(0,380px);align-items:end;justify-content:center;padding-bottom:5px}.jar-visual :deep(.cookie-jar){width:min(100%,380px)}.jar-companion{position:relative;z-index:6;align-self:end;justify-self:center;width:clamp(160px,14vw,195px);height:auto;margin:0 -20px 28px 0;object-fit:contain;filter:drop-shadow(7px 9px 0 rgba(32,22,15,.92));transform-origin:50% 90%;will-change:transform}.latest-badge{position:absolute;z-index:7;top:4%;right:0;padding:9px 13px;border:3px solid var(--ink);border-radius:999px;background:var(--pink);color:white;box-shadow:4px 4px 0 var(--ink);font-weight:1000;transform:rotate(5deg)}.selection-label{display:inline-block;padding:7px 12px;border:3px solid var(--ink);border-radius:999px;background:var(--blue);font-weight:1000}.jar-copy h2{margin:18px 0 0;font-family:var(--font-display);font-size:clamp(1.7rem,4vw,2.6rem)}.main-number{display:block;margin:4px 0 0;color:var(--pink);font-family:var(--font-display);font-size:clamp(3.5rem,8vw,6.5rem);line-height:1}.main-number small{margin-left:8px;color:var(--ink);font-size:1rem}.jar-copy>p{margin:8px 0 24px;font-weight:900}.meter{height:27px;overflow:hidden;border:4px solid var(--ink);border-radius:999px;background:white;box-shadow:3px 3px 0 var(--ink)}.meter i{display:block;height:100%;border-right:3px solid var(--ink);background:repeating-linear-gradient(135deg,var(--pink) 0 12px,var(--yellow) 12px 24px);transition:width .7s cubic-bezier(.2,.8,.2,1)}.meter-labels{display:flex;justify-content:space-between;margin-top:8px;font-size:.85rem}.meter-labels strong{color:var(--pink);font-size:1.05rem}.summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:24px 0}.summary-grid div{padding:14px;border:3px solid var(--ink);border-radius:15px;background:white}.summary-grid span,.summary-grid strong,.summary-grid small{display:block}.summary-grid span{color:var(--muted);font-size:.8rem;font-weight:800}.summary-grid strong{margin-top:5px;font-family:var(--font-display);font-size:1.45rem}.complete-message{margin-bottom:20px;padding:12px;border:3px dashed var(--ink);border-radius:14px;background:var(--yellow);font-weight:1000}@media(max-width:1040px){.headquarters-tabs{grid-template-columns:repeat(2,1fr)}.jar-stage{grid-template-columns:1fr}.jar-copy{text-align:center}.jar-visual{grid-template-columns:minmax(140px,170px) minmax(0,380px)}.summary-grid,.meter-labels{text-align:left}}@media(max-width:520px){.progress-section{padding-top:36px}.district-ribbon{border-radius:22px}.district-ribbon span,.district-ribbon strong,.district-ribbon small{display:block}.jar-stage{border-radius:28px}.jar-visual{display:flex;justify-content:center;padding-bottom:74px}.jar-visual :deep(.cookie-jar){width:min(100%,340px)}.jar-companion{position:absolute;left:0;bottom:0;width:135px;margin:0}.summary-grid{grid-template-columns:1fr}}
-.jar-stage + .district-ribbon{margin-top:32px;margin-bottom:0}.jar-copy .division-tabs{width:100%;margin-bottom:16px}.jar-copy .headquarters-tabs{grid-template-columns:repeat(2,1fr);margin-bottom:24px}.progress-section{padding-top:24px}.jar-stage{align-items:start}.jar-visual{align-self:start;padding-top:0}.compact-heading{margin-bottom:18px}.compact-heading>span{display:inline-block;padding:5px 11px;border:3px solid var(--ink);border-radius:999px;background:var(--blue);font-size:.75rem;font-weight:1000}.compact-heading h1{margin:10px 0 0;color:var(--pink);font-family:var(--font-display);font-size:clamp(2rem,4vw,3.2rem);line-height:1.05;-webkit-text-stroke:2px var(--ink);paint-order:stroke fill;text-shadow:3px 4px 0 var(--yellow)}
-.report-action{display:flex;align-items:flex-end;gap:18px;margin-top:6px}@media(max-width:520px){.report-action{justify-content:center}}
-.progress-options{margin-top:30px;padding-top:26px;border-top:3px dashed rgba(36,22,14,.55)}
-.progress-options .total-option{grid-column:1 / -1;background:white}
-.progress-options .total-option.active{background:var(--blue)}
-.progress-options .total-option.active.women{background:var(--pink)}
-
-/* Keep the jar prominent and centered; the guide character overlaps only its lower-left edge. */
-.jar-stage{grid-template-columns:minmax(330px,.9fr) 1.1fr;gap:clamp(28px,6vw,74px)}
-.jar-visual{display:flex;justify-content:center;align-items:flex-end;padding-bottom:5px}
-.jar-visual :deep(.cookie-jar){width:min(100%,440px)}
-.jar-companion{position:absolute;left:calc(50% - 233px);bottom:10px;width:clamp(180px,16vw,220px);margin:0}
-@media(max-width:1040px){
-  .jar-stage{grid-template-columns:1fr}
-  .jar-visual :deep(.cookie-jar){width:min(100%,440px)}
-}
-@media(max-width:520px){
-  .jar-visual{padding-bottom:20px}
-  .jar-visual :deep(.cookie-jar){width:min(100%,360px)}
-  .jar-companion{left:calc(50% - 187px);bottom:20px;width:145px}
-}
-
-/* Compact progress information so the complete overview reads within one screen. */
-.progress-section{padding:16px 0 60px}
-.jar-stage{padding:clamp(20px,3vw,36px)}
-.selection-label{padding:5px 10px;font-size:.88rem}
-.jar-copy h2{margin:12px 0 0;font-size:clamp(1.55rem,3vw,2.15rem)}
-.main-number{margin-top:2px;font-size:clamp(3.1rem,6vw,5rem)}
-.main-number small{font-size:.9rem}
-.jar-copy>p{margin:4px 0 14px;font-size:.9rem}
-.meter{height:23px}
-.meter-labels{margin-top:5px}
-.summary-grid{gap:10px;margin:14px 0}
-.summary-grid div{padding:10px 12px}
-.summary-grid strong{margin-top:2px;font-size:1.25rem}
-.progress-options{margin-top:18px;padding-top:16px}
-.jar-copy .division-tabs{gap:10px;margin-bottom:11px}
-.division-tabs button{min-height:48px;font-size:1rem}
-.jar-copy .headquarters-tabs{gap:8px;margin-bottom:14px}
-.headquarters-tabs button{min-height:48px;padding:5px 9px}
-.report-action .comic-button{min-height:48px;padding-block:9px}
-.jar-stage + .district-ribbon{margin-top:18px}
-
-@media(max-width:700px){
-  .progress-section{padding:8px 0 38px}
-  .progress-wrap{width:min(100% - 16px,var(--page))}
-  .jar-stage{gap:2px;padding:14px;border-radius:28px}
-  .jar-visual{padding-bottom:0}
-  .jar-visual :deep(.cookie-jar){width:min(100%,270px)}
-  .jar-companion{left:calc(50% - 137px);bottom:10px;width:112px}
-  .latest-badge{top:3%;right:5%;padding:6px 9px;font-size:.78rem}
-  .selection-label{padding:4px 9px;font-size:.8rem}
-  .jar-copy h2{margin-top:8px;font-size:1.45rem}
-  .main-number{font-size:clamp(2.8rem,12vw,3.6rem)}
-  .main-number small{font-size:.78rem}
-  .jar-copy>p{margin:2px 0 10px;font-size:.82rem}
-  .meter{height:20px;border-width:3px}
-  .meter-labels{font-size:.75rem}
-  .meter-labels strong{font-size:.9rem}
-  .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:11px 0}
-  .summary-grid div{padding:8px}
-  .summary-grid span{font-size:.7rem}
-  .summary-grid strong{font-size:1.05rem}
-  .summary-grid small{font-size:.72rem}
-  .progress-options{margin-top:13px;padding-top:11px}
-  .division-tabs button{min-height:43px;border-width:3px;font-size:.92rem}
-  .headquarters-tabs button{min-height:42px;font-size:.82rem}
-  .report-action{margin-top:2px}
-  .report-action .comic-button{min-height:44px;padding:8px 18px}
-}
-
-/* Final density pass: show the full dashboard and district total sooner. */
-@media(min-width:1041px){
-  .jar-stage{padding:24px 28px;gap:42px}
-  .jar-visual :deep(.cookie-jar){width:410px}
-  .jar-companion{left:calc(50% - 218px);bottom:12px;width:190px}
-  .jar-copy h2{font-size:1.9rem}
-  .main-number{font-size:4.35rem}
-  .summary-grid{margin:11px 0}
-  .summary-grid div{padding:8px 11px}
-  .progress-options{margin-top:12px;padding-top:11px}
-  .jar-copy .division-tabs{margin-bottom:8px}
-  .division-tabs button{min-height:43px}
-  .jar-copy .headquarters-tabs{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:10px}
-  .progress-options .total-option{grid-column:auto}
-  .headquarters-tabs button{min-height:42px;padding:4px 7px;font-size:.84rem}
-  .report-action .comic-button{min-height:43px;padding:7px 18px}
-}
-@media(max-width:700px){
-  .jar-visual :deep(.cookie-jar){width:min(100%,240px)}
-  .jar-companion{left:calc(50% - 124px);bottom:8px;width:102px}
-  .jar-copy .selection-label{margin-top:18px}
-}
-.selection-label{color:white}
-.selection-label.women{background:var(--pink)}
-.division-tabs button:first-child.active{color:white}
-.headquarters-tabs button.active{color:white}
-.meter i{animation:meter-breathe 1.8s ease-in-out infinite}
-@keyframes meter-breathe{
-  0%,100%{filter:brightness(.82) saturate(.9);opacity:.8}
-  50%{filter:brightness(1.22) saturate(1.25);opacity:1}
-}
-@media(prefers-reduced-motion:reduce){.meter i{animation:none}}
+.progress-section{min-height:calc(100svh - 86px);padding:22px 0 64px;background-color:var(--cream);background-image:linear-gradient(45deg,rgba(245,4,105,.07) 25%,transparent 25%),linear-gradient(-45deg,rgba(245,4,105,.07) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(245,4,105,.07) 75%),linear-gradient(-45deg,transparent 75%,rgba(245,4,105,.07) 75%);background-size:38px 38px;background-position:0 0,0 19px,19px -19px,-19px 0}.progress-wrap{width:var(--page);margin:auto}.progress-heading{text-align:center}.progress-heading>span{display:inline-block;padding:5px 12px;border:3px solid var(--ink);border-radius:999px;background:var(--blue);box-shadow:4px 4px 0 var(--ink);font-size:.82rem;font-weight:1000}.progress-heading h1{margin:10px 0 14px;font-family:var(--font-display);font-size:clamp(2.1rem,5vw,3.6rem);line-height:1}.view-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:min(540px,100%);margin:0 auto 20px}.view-tabs button{min-height:50px;border:4px solid var(--ink);border-radius:999px;background:white;box-shadow:4px 4px 0 var(--ink);font-family:var(--font-display);font-size:1.05rem;font-weight:1000;cursor:pointer}.view-tabs button.active{background:var(--yellow);transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+.personal-panel{display:grid;grid-template-columns:minmax(320px,.88fr) minmax(390px,1.12fr);align-items:center;gap:clamp(20px,5vw,64px);padding:clamp(20px,3vw,36px);background:#fff3b3}.personal-visual{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;justify-content:center;min-width:0}.personal-visual :deep(.cookie-jar){width:min(100%,310px)}.jar-companion{position:relative;z-index:6;width:105px;margin:0 0 24px 4px;filter:drop-shadow(6px 8px 0 rgba(32,22,15,.85));transform-origin:50% 90%}.latest-badge{position:absolute;z-index:8;top:7%;right:2%;padding:8px 12px;border:3px solid var(--ink);border-radius:999px;background:var(--pink);color:white;box-shadow:4px 4px 0 var(--ink);font-weight:1000;transform:rotate(5deg)}
+.personal-label{display:inline-block;padding:6px 11px;border:3px solid var(--ink);border-radius:999px;background:var(--blue);color:white;font-weight:1000}.personal-label.women{background:var(--pink)}.personal-copy h2{margin:13px 0 2px;font-family:var(--font-display);font-size:clamp(2rem,4vw,3rem)}.start-date{margin:0 0 16px;font-weight:800}.start-date strong{color:var(--pink)}.personal-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}.personal-stats>div{padding:14px 16px;border:3px solid var(--ink);border-radius:17px;background:white;box-shadow:3px 3px 0 var(--ink)}.personal-stats span,.personal-stats strong,.personal-stats small{display:block}.personal-stats span{color:var(--muted);font-size:.86rem;font-weight:800}.personal-stats strong{margin-top:2px;color:var(--pink);font-family:var(--font-display);font-size:clamp(2.2rem,5vw,3.4rem);line-height:1}.personal-stats small{margin-top:4px;font-weight:1000}.report-count,.personal-empty{margin:16px 0;font-weight:900}.personal-empty{padding:11px 13px;border:3px dashed var(--ink);border-radius:14px;background:#fff1a5;line-height:1.55}.personal-copy .comic-button{min-height:48px}
+.group-progress-view{width:min(930px,100%);margin:auto}.group-progress-list{display:grid;gap:18px}.group-progress-card{padding:clamp(20px,4vw,32px);background:#fff9e9;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}.group-progress-card:hover,.group-progress-card:focus-visible{transform:translateY(-4px);box-shadow:9px 12px 0 var(--ink);outline:none}.group-progress-card.expired{background:#f1eadf}.group-progress-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.group-state,.updated-chip{display:inline-block;padding:4px 9px;border:2px solid var(--ink);border-radius:999px;background:var(--green);color:white;font-size:.78rem;font-weight:1000}.expired .group-state{background:var(--muted)}.updated-chip{background:var(--pink);box-shadow:3px 3px 0 var(--ink);transform:rotate(3deg)}.group-progress-card h2{margin:8px 0 0;font-family:var(--font-display);font-size:clamp(1.65rem,4vw,2.35rem)}.group-description{margin:14px 0 5px;font-weight:800;line-height:1.6}.group-dates{margin:0 0 16px;color:var(--muted);font-size:.9rem;font-weight:900}.group-meter{height:27px;overflow:hidden;border:4px solid var(--ink);border-radius:999px;background:white;box-shadow:3px 3px 0 var(--ink)}.group-meter i{display:block;height:100%;border-right:3px solid var(--ink);background:repeating-linear-gradient(135deg,var(--pink) 0 12px,var(--yellow) 12px 24px);transition:width .7s cubic-bezier(.2,.8,.2,1)}.group-meter-copy{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-weight:1000}.group-meter-copy span{color:var(--pink)}.group-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.group-stats div{padding:11px 13px;border:3px solid var(--ink);border-radius:14px;background:white}.group-stats span,.group-stats strong{display:block}.group-stats span{color:var(--muted);font-size:.8rem;font-weight:800}.group-stats strong{margin-top:3px}.open-group-hint{display:block;margin-top:15px;color:var(--pink);font-weight:1000;text-align:right}.manage-groups{justify-self:center}.status-panel{padding:clamp(32px,7vw,64px);text-align:center;background:#fff3b3}.status-cookie{display:grid;place-items:center;width:66px;height:66px;margin:0 auto;border:4px solid var(--ink);border-radius:50%;background:var(--yellow);color:var(--pink);box-shadow:5px 5px 0 var(--ink);font-size:2rem;animation:status-breathe 1.2s ease-in-out infinite alternate}.status-panel h2{margin:20px 0 8px;font-family:var(--font-display);font-size:clamp(1.8rem,5vw,2.7rem)}.status-panel p{max-width:570px;margin:0 auto 22px;font-weight:800;line-height:1.7}.empty-actions{display:flex;justify-content:center;gap:12px}.progress-error{margin:0;padding:11px 14px;border:3px solid var(--ink);border-radius:14px;background:#ffe1ea;color:#9d003b;font-weight:900}
+.progress-switch-enter-active,.progress-switch-leave-active{transition:opacity .22s ease,transform .22s ease}.progress-switch-enter-from{opacity:0;transform:translateY(14px)}.progress-switch-leave-to{opacity:0;transform:translateY(-10px)}@keyframes status-breathe{to{transform:translateY(-8px) scale(1.05)}}
+@media(max-width:850px){.personal-panel{grid-template-columns:1fr;gap:0}.personal-visual{width:min(470px,100%);margin:auto}.personal-visual :deep(.cookie-jar){width:min(100%,330px)}.jar-companion{width:110px}.personal-copy{text-align:center}.personal-stats{text-align:left}}
+@media(max-width:600px){.progress-section{min-height:calc(100svh - 72px);padding:12px 0 38px}.progress-wrap{width:min(100% - 16px,var(--page))}.progress-heading h1{margin-bottom:12px}.view-tabs{gap:7px;margin-bottom:14px}.view-tabs button{min-height:46px;font-size:.95rem}.personal-panel,.group-progress-card,.status-panel{border-radius:28px}.personal-panel{padding:12px 14px 22px}.personal-visual{width:min(330px,100%)}.personal-visual :deep(.cookie-jar){width:min(100%,245px)}.jar-companion{width:78px;margin-bottom:18px}.latest-badge{top:5%;right:4%;padding:6px 9px;font-size:.76rem}.personal-copy h2{font-size:1.9rem}.personal-stats{gap:8px}.personal-stats>div{padding:12px}.personal-stats strong{font-size:2.15rem}.group-progress-card>header{align-items:center}.group-dates{line-height:1.6}.group-stats{grid-template-columns:1fr}.empty-actions{flex-direction:column}.empty-actions button{width:100%}}
+@media(prefers-reduced-motion:reduce){.group-meter i,.status-cookie{animation:none}}
+.progress-section{min-height:calc(100svh - 152px);padding-bottom:32px}
+@media(max-width:600px){.progress-section{min-height:calc(100svh - 136px);padding-bottom:24px}}
 </style>

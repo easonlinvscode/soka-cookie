@@ -28,6 +28,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
+        env:
+          VITE_FIREBASE_API_KEY: AIzaSyCMgCDeXQimd4JSS0zXipssXnC_QVZfLdU
+          VITE_FIREBASE_AUTH_DOMAIN: soka-cookie.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: soka-cookie
+          VITE_FIREBASE_STORAGE_BUCKET: soka-cookie.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: 136929266965
+          VITE_FIREBASE_APP_ID: 1:136929266965:web:b3fa3080e2d264d337ad1c
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

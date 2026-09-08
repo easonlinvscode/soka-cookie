@@ -6,6 +6,7 @@ const props = defineProps({
   target: { type: Number, default: 1000 },
   variantKey: { type: String, required: true },
   celebrate: { type: Boolean, default: false },
+  unitLabel: { type: String, default: '分鐘' },
 })
 
 const canvas = ref(null)
@@ -358,7 +359,7 @@ onUnmounted(() => {
     ref="canvas"
     class="cookie-jar"
     role="img"
-    :aria-label="`福運餅乾收藏罐，目前累積 ${value} 分鐘，完成 ${Math.round(value / target * 100)}%`"
+    :aria-label="`福運餅乾收藏罐，目前累積 ${value} ${unitLabel}，完成 ${Math.round(value / target * 100)}%`"
   ></canvas>
 </template>
 

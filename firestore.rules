@@ -1,0 +1,263 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMember(groupId) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function isGroupOwner(groupId) {
+      return signedIn() && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    function validDivision(value) {
+      return value in ['men', 'women'];
+    }
+
+    function validAffiliation(value) {
+      return value in ['circle', 'district', 'central', 'west-coast', 'yangxin', 'zhongyuan'];
+    }
+
+    function validProfile(data) {
+      return data.displayName is string
+        && data.displayName.size() >= 2
+        && data.displayName.size() <= 20
+        && data.email == request.auth.token.email
+        && validDivision(data.division)
+        && data.circleId == 'taoyuan-2'
+        && data.districtId == 'taoyuan-west'
+        && validAffiliation(data.affiliationId)
+        && data.profileComplete == true;
+    }
+
+    function validGroup(data) {
+      return data.keys().hasOnly([
+          'name', 'description', 'targetType', 'targetValue', 'endDate',
+          'ownerId', 'inviteCode', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 30
+        && data.description is string
+        && data.description.size() >= 2
+        && data.description.size() <= 160
+        && data.targetType in ['minutes', 'chants']
+        && data.targetValue is int
+        && data.targetValue > 0
+        && data.endDate is timestamp
+        && data.ownerId == request.auth.uid
+        && data.inviteCode is string
+        && data.inviteCode.size() == 8
+        && data.status in ['active', 'ended', 'archived']
+        && (data.status != 'active' || data.endDate >= request.time);
+    }
+
+    function validReport(data) {
+      return data.keys().hasOnly([
+          'userId', 'division', 'circleId', 'districtId', 'affiliationId',
+          'minutes', 'chants', 'sourceUnit', 'sourceAmount', 'groupIds',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == request.auth.uid
+        && data.division == profile().division
+        && data.circleId == profile().circleId
+        && data.districtId == profile().districtId
+        && data.affiliationId == profile().affiliationId
+        && data.minutes is int
+        && data.minutes > 0
+        && data.minutes <= 1440
+        && data.chants is int
+        && data.chants > 0
+        && data.chants <= 1000000
+        && data.sourceAmount is int
+        && data.sourceAmount > 0
+        && data.sourceUnit in ['minutes', 'chants']
+        && (data.sourceUnit != 'minutes'
+          || (data.minutes == data.sourceAmount && data.chants == data.minutes * 60))
+        && (data.sourceUnit != 'chants' || data.chants == data.sourceAmount)
+        && data.groupIds is list
+        && data.groupIds.size() <= 20
+        && data.status in ['active', 'deleted'];
+    }
+
+    function reportAfter(reportId) {
+      return getAfter(/databases/$(database)/documents/reports/$(reportId)).data;
+    }
+
+    function validContribution(groupId, reportId, data) {
+      return data.keys().hasOnly([
+          'reportId', 'userId', 'displayName', 'minutes', 'chants', 'createdAt', 'updatedAt'
+        ])
+        && data.reportId == reportId
+        && data.userId == request.auth.uid
+        && data.displayName == profile().displayName
+        && reportAfter(reportId).userId == request.auth.uid
+        && reportAfter(reportId).status == 'active'
+        && groupId in reportAfter(reportId).groupIds
+        && data.minutes == reportAfter(reportId).minutes
+        && data.chants == reportAfter(reportId).chants
+        && data.createdAt == reportAfter(reportId).createdAt
+        && data.updatedAt == request.time
+        && reportAfter(reportId).updatedAt == request.time;
+    }
+
+    function validInvite(data) {
+      return data.keys().hasOnly([
+          'groupId', 'ownerId', 'active', 'endDate', 'name', 'description',
+          'targetType', 'targetValue', 'createdAt', 'updatedAt'
+        ])
+        && data.groupId is string
+        && data.ownerId == request.auth.uid
+        && data.active is bool
+        && data.endDate is timestamp
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 30
+        && data.description is string
+        && data.description.size() >= 2
+        && data.description.size() <= 160
+        && data.targetType in ['minutes', 'chants']
+        && data.targetValue is int
+        && data.targetValue > 0
+        && (!data.active || data.endDate >= request.time);
+    }
+
+    match /users/{uid} {
+      allow create: if isSelf(uid) && validProfile(request.resource.data);
+      allow get: if isSelf(uid);
+      allow list, delete: if false;
+      allow update: if isSelf(uid)
+        && validProfile(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      match /groups/{groupId} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && request.resource.data.groupId == groupId
+          && request.resource.data.role in ['owner', 'member']
+          && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(uid));
+        allow update: if false;
+        allow delete: if isSelf(uid) || isGroupOwner(groupId);
+      }
+
+      match /submissionKeys/{submissionId} {
+        allow get: if isSelf(uid);
+        allow list, update, delete: if false;
+        allow create: if isSelf(uid)
+          && request.resource.data.keys().hasOnly(['reportId', 'createdAt'])
+          && request.resource.data.reportId == submissionId
+          && request.resource.data.createdAt == request.time;
+      }
+    }
+
+    match /reports/{reportId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && validReport(request.resource.data)
+        && request.resource.data.status == 'active'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.time <= resource.data.createdAt + duration.value(30, 'm')
+        && validReport(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.division == resource.data.division
+        && request.resource.data.circleId == resource.data.circleId
+        && request.resource.data.districtId == resource.data.districtId
+        && request.resource.data.affiliationId == resource.data.affiliationId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /groups/{groupId} {
+      allow read: if isMember(groupId);
+      allow create: if signedIn()
+        && validGroup(request.resource.data)
+        && request.resource.data.status == 'active'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+      allow update: if isGroupOwner(groupId)
+        && validGroup(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.inviteCode == resource.data.inviteCode
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow get: if isSelf(uid) || isMember(groupId);
+        allow list: if isMember(groupId);
+        allow create: if isSelf(uid)
+          && request.resource.data.userId == uid
+          && request.resource.data.displayName == profile().displayName
+          && request.resource.data.inviteCode is string
+          && request.resource.data.joinedAt == request.time
+          && (
+            (request.resource.data.role == 'owner'
+              && getAfter(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == uid)
+            ||
+            (request.resource.data.role == 'member'
+              && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.groupId == groupId
+              && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.active == true
+              && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.endDate >= request.time)
+          );
+        allow update: if false;
+        allow delete: if isGroupOwner(groupId)
+          && uid != get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId;
+      }
+
+      match /contributions/{reportId} {
+        allow read: if isMember(groupId);
+        allow create: if signedIn()
+          && isMember(groupId)
+          && get(/databases/$(database)/documents/groups/$(groupId)).data.status == 'active'
+          && get(/databases/$(database)/documents/groups/$(groupId)).data.endDate >= request.time
+          && validContribution(groupId, reportId, request.resource.data);
+        allow update: if signedIn()
+          && isMember(groupId)
+          && resource.data.userId == request.auth.uid
+          && request.time <= resource.data.createdAt + duration.value(30, 'm')
+          && validContribution(groupId, reportId, request.resource.data);
+        allow delete: if signedIn()
+          && resource.data.userId == request.auth.uid
+          && reportAfter(reportId).userId == request.auth.uid
+          && reportAfter(reportId).updatedAt == request.time
+          && (reportAfter(reportId).status == 'deleted' || !(groupId in reportAfter(reportId).groupIds));
+      }
+    }
+
+    match /inviteCodes/{code} {
+      allow get: if signedIn();
+      allow list, delete: if false;
+      allow create: if signedIn()
+        && validInvite(request.resource.data)
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.ownerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.inviteCode == code;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && validInvite(request.resource.data)
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+  }
+}

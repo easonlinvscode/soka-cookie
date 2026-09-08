@@ -1,5 +1,6 @@
 <script setup>
-defineEmits(['home', 'report', 'progress'])
+defineProps({ profile: Object, authenticated: Boolean })
+defineEmits(['home', 'report', 'progress', 'groups', 'profile', 'login'])
 </script>
 
 <template>
@@ -9,8 +10,11 @@ defineEmits(['home', 'report', 'progress'])
       <span>SOKA COOKIE</span>
     </button>
     <nav aria-label="主要選單">
-      <button type="button" @click="$emit('home')">首頁</button>
-      <button type="button" @click="$emit('progress')">目前進度</button>
+      <button class="home-link" type="button" @click="$emit('home')">首頁</button>
+      <button type="button" @click="$emit('progress')">查看進度</button>
+      <button type="button" @click="$emit('groups')">群組</button>
+      <button v-if="authenticated" class="profile-link" type="button" @click="$emit('profile')">{{ profile?.displayName || '我的' }}</button>
+      <button v-else class="login-link" type="button" @click="$emit('login')">登入</button>
       <button class="nav-cta" type="button" @click="$emit('report')">我要回報！</button>
     </nav>
   </header>
@@ -18,8 +22,10 @@ defineEmits(['home', 'report', 'progress'])
 
 <style scoped>
 .header {
-  position: relative;
-  z-index: 20;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  isolation: isolate;
   width: var(--page);
   min-height: 86px;
   margin: 0 auto;
@@ -27,6 +33,15 @@ defineEmits(['home', 'report', 'progress'])
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+.header::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0 calc((100vw - 100%) / -2);
+  border-bottom: 3px solid rgba(32,22,15,.16);
+  background: var(--pink);
+  box-shadow: 0 5px 0 rgba(32,22,15,.08);
 }
 .brand {
   display: flex;
@@ -74,10 +89,15 @@ nav .nav-cta {
   color: var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
 }
+nav .login-link{padding:9px 16px;border:3px solid var(--ink);border-radius:999px;background:white;color:var(--ink);box-shadow:3px 3px 0 var(--ink)}
 @media (max-width: 680px) {
-  .header { min-height: 72px; }
-  nav button:not(.nav-cta) { display: none; }
-  .brand { font-size: 1rem; }
+  .header { min-height: 72px; gap: 6px; }
+  nav { gap: 1px; }
+  nav button { padding: 8px 6px; font-size: .8rem; }
+  nav .nav-cta { margin-left: 2px; padding: 9px 10px; }
+  nav .home-link, nav .profile-link { display: none; }
+  .brand { font-size: .88rem; }
   .brand-cookie { width: 40px; }
 }
+@media (max-width: 430px) { .brand>span:last-child { display:none } }
 </style>

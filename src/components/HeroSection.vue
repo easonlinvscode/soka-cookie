@@ -6,7 +6,6 @@ import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 import littleBear from '../assets/characters/lucky-bear-final.png'
 import CookieParadeIcon from './CookieParadeIcon.vue'
 
-defineProps({ districtMinutes: { type: Number, required: true } })
 defineEmits(['report', 'progress'])
 
 const hero = ref(null)
@@ -81,7 +80,7 @@ onUnmounted(() => motionContext?.revert())
         <p>把今天的努力烤成一塊福運餅乾，一起裝滿福運派對包！</p>
         <div class="hero-actions">
           <button class="comic-button" type="button" @click="$emit('report')">開始回報 GO!</button>
-          <button class="comic-button secondary" type="button" @click="$emit('progress')">查看目前進度</button>
+          <button class="comic-button secondary" type="button" @click="$emit('progress')">查看進度</button>
         </div>
       </div>
 
@@ -93,7 +92,7 @@ onUnmounted(() => motionContext?.revert())
     </div>
 
     <div class="marquee" aria-hidden="true">
-      <div>HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ 桃園西區 ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ 桃園西區 ★ HAPPY ★ LUCKY ★ TOGETHER ★</div>
+      <div>HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★</div>
     </div>
   </section>
 </template>
@@ -268,5 +267,11 @@ h1 strong {
   .mascot-lion { left: 0; }
   .mascot-bear { right: 0; }
   .jar-cookie { width: clamp(34px, 10vw, 44px); filter: drop-shadow(2px 3px 0 rgba(36,22,14,.24)); }
+}
+.hero { min-height: calc(100svh - 152px); }
+.hero-inner { min-height: max(560px, calc(100svh - 152px)); padding-top: 34px; padding-bottom: 218px; }
+@media (max-width: 520px) {
+  .hero { min-height: calc(100svh - 136px); }
+  .hero-inner { min-height: max(540px, calc(100svh - 136px)); padding-top: 24px; padding-bottom: 198px; }
 }
 </style>

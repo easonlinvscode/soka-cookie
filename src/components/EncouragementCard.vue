@@ -1,14 +1,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import gsap from 'gsap'
-import { divisions, headquarters } from '../data/content.js'
+import { affiliations, divisions } from '../data/content.js'
 import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 import CookieParadeIcon from './CookieParadeIcon.vue'
 
 const props = defineProps({ report: { type: Object, required: true }, quote: { type: Object, required: true } })
 defineEmits(['progress'])
 const divisionLabel = computed(() => divisions.find((item) => item.id === props.report.division)?.label)
-const headquartersLabel = computed(() => headquarters.find((item) => item.id === props.report.headquarters)?.label)
+const affiliationLabel = computed(() => affiliations.find((item) => item.id === props.report.affiliationId)?.label)
 const section = ref(null)
 const displayedMinutes = ref(0)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -75,7 +75,7 @@ onUnmounted(() => motionContext?.revert())
       <div class="dashed-line"></div>
       <p class="encourage">{{ quote.encourage }}</p>
       <div class="report-result">
-        <span>{{ divisionLabel }}／{{ headquartersLabel }}</span>
+        <span>{{ divisionLabel }}／{{ affiliationLabel }}</span>
         <strong>+ {{ Math.round(displayedMinutes).toLocaleString() }} 分鐘</strong>
         <small>{{ report.chants.toLocaleString() }} 遍的幸運能量已加入！</small>
       </div>
@@ -132,4 +132,6 @@ blockquote { margin: 20px 0 9px; font-size: clamp(1.65rem, 4vw, 2.35rem); }
   .cookie-piece { width: 31px; height: 31px; filter: drop-shadow(1.5px 2px 0 rgba(36,22,14,.24)); }
   .cookie-piece:nth-child(3n) { width: 35px; height: 35px; }
 }
+.encouragement-section { min-height: calc(100svh - 152px); padding-bottom: 46px; }
+@media (max-width: 520px) { .encouragement-section { min-height: calc(100svh - 136px); padding-bottom: 30px; } }
 </style>

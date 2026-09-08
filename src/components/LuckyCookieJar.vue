@@ -11,7 +11,7 @@ const props = defineProps({
 
 const canvas = ref(null)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-const MAX_COOKIES = 32
+const MAX_COOKIES = 36
 const W = 440
 const H = 540
 let frameId = 0
@@ -27,7 +27,7 @@ const colors = ['#f5a13a', '#ffc84b', '#f28b34', '#ffb84f']
 
 function getCount(value) {
   if (value <= 0) return 0
-  return Math.min(MAX_COOKIES, Math.max(1, Math.ceil((value / props.target) * 36)))
+  return Math.min(MAX_COOKIES, Math.max(10, Math.ceil((value / props.target) * MAX_COOKIES)))
 }
 
 function seeded(index, salt = 0) {
@@ -368,6 +368,7 @@ onUnmounted(() => {
   display: block;
   width: min(100%, 440px);
   height: auto;
+  margin-inline: auto;
   aspect-ratio: 440 / 540;
   filter: drop-shadow(12px 14px 0 rgba(32, 22, 15, .95));
 }

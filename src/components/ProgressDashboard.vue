@@ -5,6 +5,8 @@ import LuckyCookieJar from './LuckyCookieJar.vue'
 import PersonalCalendar from './PersonalCalendar.vue'
 import { getGroupDetails } from '../services/firebaseService.js'
 import littleLion from '../assets/characters/little-lion-final.png'
+import luckyBear from '../assets/characters/lucky-bear-final.png'
+import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 
 const props = defineProps({
   user: { type: Object, required: true },
@@ -28,6 +30,12 @@ const displayedChants = ref(0)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 const counter = { minutes: 0, chants: 0 }
 let motionContext
+const companionOptions = [
+  { src: littleLion, name: '小獅子' },
+  { src: luckyBear, name: '幸運小熊' },
+  { src: phoenixChick, name: '小鳳雛' },
+]
+const personalCompanion = companionOptions[Math.floor(Math.random() * companionOptions.length)]
 
 function timestampToDate(value) {
   if (!value) return null
@@ -196,7 +204,7 @@ onUnmounted(() => {
           <article class="personal-panel comic-panel">
             <div class="personal-visual">
               <div v-if="hasFreshPersonalReport" class="latest-badge">剛剛更新!</div>
-              <img class="jar-companion" :src="littleLion" alt="拿著福運餅乾、替你加油的小獅子">
+              <img class="jar-companion" :src="personalCompanion.src" :alt="`${personalCompanion.name}在餅乾罐旁替你加油`">
               <LuckyCookieJar :value="personalMinutes" :target="jarTarget" variant-key="personal-progress" :celebrate="hasFreshPersonalReport" />
             </div>
 
@@ -287,4 +295,7 @@ onUnmounted(() => {
 @media(prefers-reduced-motion:reduce){.group-meter i,.status-cookie{animation:none}}
 .progress-section{min-height:calc(100svh - 152px);padding-bottom:32px}
 @media(max-width:600px){.progress-section{min-height:calc(100svh - 136px);padding-bottom:24px}}
+.personal-visual{grid-template-columns:minmax(0,1fr) minmax(0,310px) minmax(0,1fr);column-gap:8px}.personal-visual :deep(.cookie-jar){grid-column:2;width:100%}.jar-companion{grid-column:1;grid-row:1;justify-self:end;width:92px;margin-right:0}.personal-copy .comic-button{display:block;margin-left:auto}
+@media(max-width:850px){.personal-visual{grid-template-columns:minmax(0,1fr) minmax(0,330px) minmax(0,1fr)}.jar-companion{width:96px}}
+@media(max-width:600px){.personal-visual{grid-template-columns:minmax(0,1fr) minmax(0,225px) minmax(0,1fr);width:min(350px,100%)}.personal-visual :deep(.cookie-jar){width:100%}.jar-companion{width:62px}}
 </style>

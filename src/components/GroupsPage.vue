@@ -2,6 +2,8 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import LuckyCookieJar from './LuckyCookieJar.vue'
 import phoenixChick from '../assets/characters/phoenix-chick-final.png'
+import littleLion from '../assets/characters/little-lion-final.png'
+import luckyBear from '../assets/characters/lucky-bear-final.png'
 import {
   createGroup,
   getGroupDetails,
@@ -39,6 +41,12 @@ const today = new Date().toISOString().slice(0, 10)
 const createForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
 const editForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
 const editing = ref(false)
+const companionOptions = [
+  { src: littleLion, name: '小獅子' },
+  { src: luckyBear, name: '幸運小熊' },
+  { src: phoenixChick, name: '小鳳雛' },
+]
+const groupCompanion = companionOptions[Math.floor(Math.random() * companionOptions.length)]
 
 const createdGroups = computed(() => props.groups.filter((group) => group.ownerId === props.user.uid))
 const joinedGroups = computed(() => props.groups.filter((group) => group.ownerId !== props.user.uid))
@@ -354,7 +362,7 @@ watch(() => props.initialGroupId, async (groupId) => {
                 :variant-key="`group-${selected.id}`"
                 :unit-label="unitLabel"
               />
-              <img class="group-jar-companion" :src="phoenixChick" alt="在餅乾罐旁替群組加油的小鳳雛">
+              <img class="group-jar-companion" :src="groupCompanion.src" :alt="`${groupCompanion.name}在餅乾罐旁替群組加油`">
             </div>
             <div class="group-overview-copy">
               <div class="detail-stats"><div><span>完成日期</span><strong>{{ formatDate(selected.endDate) }}</strong></div><div><span>我的貢獻</span><strong>{{ myContribution.toLocaleString() }} {{ unitLabel }}</strong></div><div><span>成員人數</span><strong>{{ details.members.length }} 人</strong></div></div>
@@ -437,4 +445,6 @@ watch(() => props.initialGroupId, async (groupId) => {
 .edit-form>.back{justify-self:start;width:max-content;max-width:100%}
 .edit-form fieldset>legend{margin-bottom:10px}.edit-form .target-tabs{width:min(580px,100%)}.edit-form .target-tabs label{min-height:56px;padding:7px 12px;gap:10px}.edit-form .target-check{width:24px;height:24px}.edit-form .target-tabs label.active .target-check::after{width:11px;height:11px}
 @media(max-width:760px){.groups-page{min-height:calc(100svh - 136px);padding-top:12px;padding-bottom:24px}.group-actions{top:auto}}
+.group-jar-stage{grid-template-columns:minmax(0,1fr) minmax(0,250px) minmax(0,1fr);column-gap:8px}.group-jar-stage :deep(.cookie-jar){grid-column:2;width:100%}.group-jar-companion{grid-column:1;grid-row:1;justify-self:end;width:78px;margin-right:0}
+@media(max-width:500px){.group-jar-stage{grid-template-columns:minmax(0,1fr) minmax(0,210px) minmax(0,1fr)}.group-jar-stage :deep(.cookie-jar){width:100%}.group-jar-companion{width:58px}}
 </style>

@@ -9,6 +9,7 @@ import {
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -16,6 +17,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   where,
   writeBatch,
 } from 'firebase/firestore'
@@ -137,6 +139,24 @@ export function watchMyReports(uid, callback, onError) {
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
     callback(items)
   }, onError)
+}
+
+export function watchFavoriteCards(uid, callback, onError) {
+  requireFirebase()
+  return onSnapshot(collection(db, 'users', uid, 'favoriteCards'), (snapshot) => {
+    callback(snapshot.docs.map((item) => item.id))
+  }, onError)
+}
+
+export async function setFavoriteCard(uid, cardId, favorite) {
+  requireFirebase()
+  if (!/^[a-z0-9-]{2,50}$/.test(cardId)) throw new Error('卡片資料不正確。')
+  const favoriteRef = doc(db, 'users', uid, 'favoriteCards', cardId)
+  if (favorite) {
+    await setDoc(favoriteRef, { cardId, createdAt: serverTimestamp() })
+  } else {
+    await deleteDoc(favoriteRef)
+  }
 }
 
 export async function getMyReports(uid) {

@@ -12,9 +12,8 @@ import LoginPrompt from './components/LoginPrompt.vue'
 import ProfileSetup from './components/ProfileSetup.vue'
 import GroupsPage from './components/GroupsPage.vue'
 import UserProfile from './components/UserProfile.vue'
-import { quotes } from './data/content.js'
 import { isFirebaseConfigured } from './firebase.js'
-import { getMyGroups, getProfile, loginWithGoogle, logout, saveProfile, submitReport, watchAuth, watchMyReports } from './services/firebaseService.js'
+import { getMyGroups, getProfile, loginWithGoogle, logout, saveProfile, setFavoriteCard, submitReport, watchAuth, watchFavoriteCards, watchMyReports } from './services/firebaseService.js'
 
 const initialRoute = readRoute()
 const authReady = ref(!isFirebaseConfigured)
@@ -24,7 +23,7 @@ const currentView = ref(['home', 'login'].includes(initialRoute.view) ? initialR
 const reports = ref([])
 const groups = ref([])
 const latestReport = ref(null)
-const currentQuote = ref(quotes[0])
+const favoriteCardIds = ref([])
 const loginBusy = ref(false)
 const savingProfile = ref(false)
 const submittingReport = ref(false)
@@ -32,6 +31,8 @@ const groupsLoading = ref(false)
 const loginError = ref('')
 const profileError = ref('')
 const reportError = ref('')
+const favoriteError = ref('')
+const favoriteBusy = ref(false)
 const isEditingProfile = ref(false)
 const highlightLatestUpdate = ref(false)
 const loginPromptOpen = ref(false)
@@ -46,6 +47,7 @@ const savedLoginDestination = ref(sessionStorage.getItem('soka-cookie-login-dest
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 let stopAuth = null
 let stopReports = null
+let stopFavorites = null
 
 const myReports = computed(() => reports.value.filter((report) => report.userId === user.value?.uid))
 const pendingDestinationLabel = computed(() => ({ report: '回報唱題', progress: '查看進度', groups: '查看或加入群組', profile: '查看個人資料' }[pendingView.value] || '使用這項功能'))
@@ -129,14 +131,22 @@ function startReports(uid) {
   stopReports = watchMyReports(uid, (items) => { reports.value = items }, () => { reportError.value = '目前無法讀取個人進度，請稍後重試。' })
 }
 
+function startFavorites(uid) {
+  stopFavorites?.()
+  stopFavorites = watchFavoriteCards(uid, (items) => { favoriteCardIds.value = items }, () => { favoriteError.value = '目前無法讀取收藏卡片。' })
+}
+
 async function handleAuth(account) {
   const continueAfterLogin = loginRequested.value || Boolean(savedLoginDestination.value)
   authReady.value = false
   user.value = account
   stopReports?.()
   stopReports = null
+  stopFavorites?.()
+  stopFavorites = null
   reports.value = []
   groups.value = []
+  favoriteCardIds.value = []
   latestReport.value = null
   if (!account) {
     profile.value = null
@@ -160,6 +170,7 @@ async function handleAuth(account) {
     profile.value = await getProfile(account.uid)
     if (profile.value?.profileComplete) {
       startReports(account.uid)
+      startFavorites(account.uid)
       await refreshGroups()
       if (pendingJoinCode.value) activateRoute({ view: 'groups', groupMode: 'join' }, { replace: true })
       else if (continueAfterLogin) activateRoute(pendingRoute.value || { view: pendingView.value || savedLoginDestination.value || 'report' }, { replace: true })
@@ -203,6 +214,7 @@ async function handleSaveProfile(values) {
     profile.value = await saveProfile(user.value, values)
     isEditingProfile.value = false
     startReports(user.value.uid)
+    startFavorites(user.value.uid)
     await refreshGroups()
     const destination = wasEditing
       ? { view: 'profile' }
@@ -224,11 +236,28 @@ async function handleReport(values) {
   reportError.value = ''
   try {
     latestReport.value = await submitReport(user.value, profile.value, values)
-    currentQuote.value = quotes[Math.floor(Math.random() * quotes.length)]
     highlightLatestUpdate.value = true
     activateRoute({ view: 'encouragement' })
   } catch (error) { reportError.value = error.message || '回報失敗，請稍後再試。' }
   finally { submittingReport.value = false }
+}
+
+async function handleFavorite(cardId, favorite) {
+  if (favoriteBusy.value) return
+  favoriteBusy.value = true
+  favoriteError.value = ''
+  const previous = [...favoriteCardIds.value]
+  favoriteCardIds.value = favorite
+    ? [...new Set([...previous, cardId])]
+    : previous.filter((id) => id !== cardId)
+  try {
+    await setFavoriteCard(user.value.uid, cardId, favorite)
+  } catch (error) {
+    favoriteCardIds.value = previous
+    favoriteError.value = error.message || '收藏失敗，請稍後再試。'
+  } finally {
+    favoriteBusy.value = false
+  }
 }
 
 function navigate(view) {
@@ -301,6 +330,7 @@ onUnmounted(() => {
   window.removeEventListener('popstate', handleHistoryNavigation)
   stopAuth?.()
   stopReports?.()
+  stopFavorites?.()
 })
 </script>
 
@@ -334,10 +364,10 @@ onUnmounted(() => {
           <HeroSection v-if="currentView==='home'" @report="navigate('report')" @progress="showProgress(false)" />
           <LoginScreen v-else-if="currentView==='login'" :loading="loginBusy" :error="loginError" @login="handleLogin" />
           <QuickReport v-else-if="currentView==='report' && user" :profile="profile" :groups="groups" :submitting="submittingReport" :error="reportError" @submit="handleReport" />
-          <EncouragementCard v-else-if="currentView==='encouragement'" :report="latestReport" :quote="currentQuote" @progress="showProgress(true)" />
+          <EncouragementCard v-else-if="currentView==='encouragement'" :report="latestReport" :favorite-card-ids="favoriteCardIds" :favorite-busy="favoriteBusy" :favorite-error="favoriteError" @favorite="handleFavorite" @progress="showProgress(true)" />
           <ProgressDashboard v-else-if="currentView==='progress' && user" :user="user" :profile="profile" :reports="myReports" :groups="groups" :groups-loading="groupsLoading" :latest-report="latestReport" :highlight-latest-update="highlightLatestUpdate" :initial-mode="initialProgressMode" @route="handleProgressRoute" @report="navigate('report')" @groups="openGroupFromProgress" />
           <GroupsPage v-else-if="currentView==='groups' && user" :user="user" :profile="profile" :groups="groups" :loading="groupsLoading" :initial-join-code="pendingJoinCode" :initial-group-id="initialGroupId" :initial-mode="initialGroupMode" @route="handleGroupRoute" @join-code-consumed="clearJoinCode" @refresh="refreshGroups" @report="navigate('report')" />
-          <UserProfile v-else :profile="profile" :reports="myReports" :groups="groups" @edit="editProfile" @report="navigate('report')" @groups="navigate('groups')" @logout="handleLogout" />
+          <UserProfile v-else :profile="profile" :reports="myReports" :groups="groups" :favorite-card-ids="favoriteCardIds" @edit="editProfile" @report="navigate('report')" @groups="navigate('groups')" @logout="handleLogout" />
         </div>
       </Transition>
     </main>

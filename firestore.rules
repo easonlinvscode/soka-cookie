@@ -160,6 +160,18 @@ service cloud.firestore {
           && request.resource.data.reportId == submissionId
           && request.resource.data.createdAt == request.time;
       }
+
+      match /favoriteCards/{cardId} {
+        allow get, list: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && request.resource.data.keys().hasOnly(['cardId', 'createdAt'])
+          && request.resource.data.cardId == cardId
+          && cardId.size() >= 2
+          && cardId.size() <= 50
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
+        allow delete: if isSelf(uid);
+      }
     }
 
     match /reports/{reportId} {

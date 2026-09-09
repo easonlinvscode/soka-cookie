@@ -23,7 +23,7 @@ const currentView = ref(['home', 'login'].includes(initialRoute.view) ? initialR
 const reports = ref([])
 const groups = ref([])
 const latestReport = ref(null)
-const favoriteCardIds = ref([])
+const favoriteCards = ref([])
 const loginBusy = ref(false)
 const savingProfile = ref(false)
 const submittingReport = ref(false)
@@ -133,7 +133,7 @@ function startReports(uid) {
 
 function startFavorites(uid) {
   stopFavorites?.()
-  stopFavorites = watchFavoriteCards(uid, (items) => { favoriteCardIds.value = items }, () => { favoriteError.value = '目前無法讀取收藏卡片。' })
+  stopFavorites = watchFavoriteCards(uid, (items) => { favoriteCards.value = items }, () => { favoriteError.value = '目前無法讀取收藏卡片。' })
 }
 
 async function handleAuth(account) {
@@ -146,7 +146,7 @@ async function handleAuth(account) {
   stopFavorites = null
   reports.value = []
   groups.value = []
-  favoriteCardIds.value = []
+  favoriteCards.value = []
   latestReport.value = null
   if (!account) {
     profile.value = null
@@ -242,18 +242,20 @@ async function handleReport(values) {
   finally { submittingReport.value = false }
 }
 
-async function handleFavorite(cardId, favorite) {
+async function handleFavorite(card, favorite) {
   if (favoriteBusy.value) return
   favoriteBusy.value = true
   favoriteError.value = ''
-  const previous = [...favoriteCardIds.value]
-  favoriteCardIds.value = favorite
-    ? [...new Set([...previous, cardId])]
-    : previous.filter((id) => id !== cardId)
+  const previous = [...favoriteCards.value]
+  const cardId = card.cardId || card.id
+  const favoriteId = card.favoriteId || `${cardId}--${card.mascot}`
+  favoriteCards.value = favorite
+    ? [...previous.filter((item) => item.favoriteId !== favoriteId), { favoriteId, cardId, mascot: card.mascot }]
+    : previous.filter((item) => item.favoriteId !== favoriteId)
   try {
-    await setFavoriteCard(user.value.uid, cardId, favorite)
+    await setFavoriteCard(user.value.uid, card, favorite)
   } catch (error) {
-    favoriteCardIds.value = previous
+    favoriteCards.value = previous
     favoriteError.value = error.message || '收藏失敗，請稍後再試。'
   } finally {
     favoriteBusy.value = false
@@ -364,10 +366,10 @@ onUnmounted(() => {
           <HeroSection v-if="currentView==='home'" @report="navigate('report')" @progress="showProgress(false)" />
           <LoginScreen v-else-if="currentView==='login'" :loading="loginBusy" :error="loginError" @login="handleLogin" />
           <QuickReport v-else-if="currentView==='report' && user" :profile="profile" :groups="groups" :submitting="submittingReport" :error="reportError" @submit="handleReport" />
-          <EncouragementCard v-else-if="currentView==='encouragement'" :report="latestReport" :favorite-card-ids="favoriteCardIds" :favorite-busy="favoriteBusy" :favorite-error="favoriteError" @favorite="handleFavorite" @progress="showProgress(true)" />
+          <EncouragementCard v-else-if="currentView==='encouragement'" :report="latestReport" :favorite-cards="favoriteCards" :favorite-busy="favoriteBusy" :favorite-error="favoriteError" @favorite="handleFavorite" @progress="showProgress(true)" />
           <ProgressDashboard v-else-if="currentView==='progress' && user" :user="user" :profile="profile" :reports="myReports" :groups="groups" :groups-loading="groupsLoading" :latest-report="latestReport" :highlight-latest-update="highlightLatestUpdate" :initial-mode="initialProgressMode" @route="handleProgressRoute" @report="navigate('report')" @groups="openGroupFromProgress" />
           <GroupsPage v-else-if="currentView==='groups' && user" :user="user" :profile="profile" :groups="groups" :loading="groupsLoading" :initial-join-code="pendingJoinCode" :initial-group-id="initialGroupId" :initial-mode="initialGroupMode" @route="handleGroupRoute" @join-code-consumed="clearJoinCode" @refresh="refreshGroups" @report="navigate('report')" />
-          <UserProfile v-else :profile="profile" :reports="myReports" :groups="groups" :favorite-card-ids="favoriteCardIds" @edit="editProfile" @report="navigate('report')" @groups="navigate('groups')" @logout="handleLogout" />
+          <UserProfile v-else :profile="profile" :reports="myReports" :groups="groups" :favorite-cards="favoriteCards" :favorite-busy="favoriteBusy" :favorite-error="favoriteError" @favorite="handleFavorite" @edit="editProfile" @report="navigate('report')" @groups="navigate('groups')" @logout="handleLogout" />
         </div>
       </Transition>
     </main>

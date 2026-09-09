@@ -118,5 +118,5 @@ nav .login-link{padding:9px 16px;border:3px solid var(--ink);border-radius:999px
   nav .login-link{padding:10px 12px;box-shadow:none}
   nav .nav-cta{margin:5px 0 0;padding:11px 14px;text-align:center}
 }
-@media (max-width: 430px) { .brand>span:last-child { display:none } }
+@media (max-width: 430px) { .brand{gap:7px;font-size:.78rem}.brand-cookie{width:38px;height:38px;flex:0 0 38px} }
 </style>

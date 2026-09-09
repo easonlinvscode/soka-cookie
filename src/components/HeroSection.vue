@@ -72,7 +72,7 @@ onUnmounted(() => motionContext?.revert())
     </div>
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="eyebrow">TAOYUAN WEST PARTY</div>
+        <div class="eyebrow">SOKA PARTY</div>
         <h1 aria-label="福運餅乾大作戰">
           <span>福運餅乾</span>
           <strong>大作戰！</strong>

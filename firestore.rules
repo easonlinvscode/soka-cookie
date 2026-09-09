@@ -164,10 +164,12 @@ service cloud.firestore {
       match /favoriteCards/{cardId} {
         allow get, list: if isSelf(uid);
         allow create: if isSelf(uid)
-          && request.resource.data.keys().hasOnly(['cardId', 'createdAt'])
-          && request.resource.data.cardId == cardId
-          && cardId.size() >= 2
-          && cardId.size() <= 50
+          && request.resource.data.keys().hasOnly(['cardId', 'mascot', 'createdAt'])
+          && cardId == request.resource.data.cardId + '--' + request.resource.data.mascot
+          && request.resource.data.cardId is string
+          && request.resource.data.cardId.size() >= 2
+          && request.resource.data.cardId.size() <= 50
+          && request.resource.data.mascot in ['lion', 'bear', 'phoenix']
           && request.resource.data.createdAt == request.time;
         allow update: if false;
         allow delete: if isSelf(uid);

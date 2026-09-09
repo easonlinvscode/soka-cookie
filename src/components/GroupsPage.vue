@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+import gsap from 'gsap'
 import LuckyCookieJar from './LuckyCookieJar.vue'
 import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 import littleLion from '../assets/characters/little-lion-final.png'
@@ -37,6 +38,12 @@ const joinPreview = ref(null)
 const invitationActive = ref(false)
 const qrDataUrl = ref('')
 const confirmAction = ref(null)
+const detailModal = ref('')
+const displayedTotal = ref(0)
+const displayedContribution = ref(0)
+const displayedMembers = ref(0)
+const displayedPercentage = ref(0)
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 const today = new Date().toISOString().slice(0, 10)
 const createForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
 const editForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
@@ -72,6 +79,8 @@ function resetFeedback() { error.value = ''; message.value = '' }
 function setMode(nextMode) {
   mode.value = nextMode
   editing.value = false
+  detailModal.value = ''
+  confirmAction.value = null
   if (nextMode === 'list') selected.value = null
   emit('route', { mode: nextMode })
 }
@@ -92,6 +101,41 @@ function statusLabel(group) {
   if (group.status === 'archived') return '已封存'
   if (group.status === 'ended' || (group.endDate?.toDate && group.endDate.toDate() < new Date())) return '已結束'
   return '進行中'
+}
+
+function animateGroupStats() {
+  if (reducedMotion.matches) {
+    displayedTotal.value = total.value
+    displayedContribution.value = myContribution.value
+    displayedMembers.value = details.members.length
+    displayedPercentage.value = percentage.value
+    return
+  }
+  const counters = { total: 0, contribution: 0, members: 0, percentage: 0 }
+  gsap.to(counters, {
+    total: total.value,
+    contribution: myContribution.value,
+    members: details.members.length,
+    percentage: percentage.value,
+    duration: 1.05,
+    ease: 'power2.out',
+    onUpdate: () => {
+      displayedTotal.value = Math.round(counters.total)
+      displayedContribution.value = Math.round(counters.contribution)
+      displayedMembers.value = Math.round(counters.members)
+      displayedPercentage.value = Math.round(counters.percentage)
+    },
+  })
+}
+
+function openDetailModal(name) {
+  confirmAction.value = null
+  detailModal.value = name
+}
+
+function closeDetailModal() {
+  confirmAction.value = null
+  detailModal.value = ''
 }
 
 async function handleCreate() {
@@ -153,6 +197,7 @@ async function openGroup(group, updateRoute = true) {
     mode.value = 'detail'
     editing.value = false
     await nextTick()
+    animateGroupStats()
     await generateQr()
     if (props.initialMode === 'edit' && !updateRoute) beginEdit(false)
     else if (updateRoute) emit('route', { mode: 'detail', groupId: result.group.id })
@@ -352,6 +397,10 @@ watch(() => props.initialGroupId, async (groupId) => {
             <button class="back" type="button" @click="closeDetail">← 返回群組</button>
             <button v-if="isOwner && !isExpired" class="edit-button" type="button" @click="beginEdit">修改設定</button>
           </div>
+          <div class="detail-action-buttons">
+            <button v-if="!isExpired" type="button" @click="openDetailModal('invitation')"><span aria-hidden="true">＋</span> 邀請夥伴</button>
+            <button v-if="isOwner" type="button" @click="openDetailModal('owner')"><span aria-hidden="true">⚙</span> 群主管理</button>
+          </div>
           <div class="detail-title"><h2>{{ selected.name }}</h2><span :class="{expired:isExpired}">{{ statusLabel(selected) }}</span></div>
           <p class="description">{{ selected.description }}</p>
           <div class="group-overview">
@@ -365,9 +414,16 @@ watch(() => props.initialGroupId, async (groupId) => {
               <img class="group-jar-companion" :src="groupCompanion.src" :alt="`${groupCompanion.name}在餅乾罐旁替群組加油`">
             </div>
             <div class="group-overview-copy">
-              <div class="detail-stats"><div><span>完成日期</span><strong>{{ formatDate(selected.endDate) }}</strong></div><div><span>我的貢獻</span><strong>{{ myContribution.toLocaleString() }} {{ unitLabel }}</strong></div><div><span>成員人數</span><strong>{{ details.members.length }} 人</strong></div></div>
-              <div class="group-meter progress-breathe"><i :style="{width:percentage+'%'}"></i></div>
-              <div class="meter-copy"><strong>{{ total.toLocaleString() }}／{{ selected.targetValue.toLocaleString() }} {{ unitLabel }}</strong><span>{{ percentage }}%</span></div>
+              <div class="group-main-stats">
+                <div><span>群組目前累積</span><strong>{{ displayedTotal.toLocaleString() }}</strong><small>{{ unitLabel }}</small></div>
+                <div><span>我的貢獻</span><strong>{{ displayedContribution.toLocaleString() }}</strong><small>{{ unitLabel }}</small></div>
+              </div>
+              <div class="group-meta-stats">
+                <div><span>完成日期</span><strong>{{ formatDate(selected.endDate) }}</strong></div>
+                <div><span>成員人數</span><strong>{{ displayedMembers }} 人</strong></div>
+              </div>
+              <div class="group-meter progress-breathe"><i :style="{width:displayedPercentage+'%'}"></i></div>
+              <div class="meter-copy"><strong>{{ displayedTotal.toLocaleString() }}／{{ selected.targetValue.toLocaleString() }} {{ unitLabel }}</strong><span>{{ displayedPercentage }}%</span></div>
             </div>
           </div>
 
@@ -376,33 +432,6 @@ watch(() => props.initialGroupId, async (groupId) => {
             <ol><li v-for="(member,index) in leaderboard" :key="member.userId" :class="{mine:member.userId===user.uid,inactive:!member.active}"><span class="rank">{{ index+1 }}</span><strong>{{ member.name }}</strong><span>{{ member.amount.toLocaleString() }} {{ unitLabel }}</span></li></ol>
           </section>
 
-          <section v-if="!isExpired" class="invitation-panel">
-            <div class="invite-copy"><span>邀請碼</span><strong>{{ selected.inviteCode }}</strong><small>{{ invitationActive ? '邀請開放中' : '邀請已關閉' }}</small></div>
-            <img v-if="qrDataUrl && invitationActive" :src="qrDataUrl" alt="群組邀請 QR Code">
-            <div class="invite-actions">
-              <button type="button" :disabled="!invitationActive" @click="copyText(selected.inviteCode,'邀請碼已複製。')">複製代碼</button>
-              <button type="button" :disabled="!invitationActive" @click="copyText(shareLink,'邀請連結已複製。')">複製連結</button>
-              <button type="button" :disabled="!invitationActive" @click="shareInvitation">分享邀請</button>
-            </div>
-          </section>
-
-          <section v-if="isOwner" class="owner-panel">
-            <h3>群主管理</h3>
-            <div class="owner-actions">
-              <button v-if="!isExpired" type="button" @click="toggleInvitation">{{ invitationActive ? '關閉邀請' : '重新開啟邀請' }}</button>
-              <button v-if="selected.status==='active'" type="button" @click="confirmAction={type:'ended'}">提前結束</button>
-              <button v-if="selected.status!=='archived'" type="button" @click="confirmAction={type:'archived'}">封存群組</button>
-            </div>
-            <h4>成員管理</h4>
-            <div class="member-management"><div v-for="member in details.members" :key="member.id"><span>{{ member.displayName }}<small>{{ member.role==='owner'?'建立者':'成員' }}</small></span><button v-if="member.id!==user.uid" type="button" @click="confirmAction={type:'remove',member}">移除</button></div></div>
-          </section>
-
-          <div v-if="confirmAction" class="confirm-box">
-            <p v-if="confirmAction.type==='remove'">確定要將「{{ confirmAction.member.displayName }}」移出群組嗎？過去的貢獻會保留。</p>
-            <p v-else-if="confirmAction.type==='ended'">確定提前結束挑戰？結束後不再接受新的群組回報。</p>
-            <p v-else>確定封存群組？內容仍會保留查看。</p>
-            <button type="button" @click="confirmAction=null">取消</button><button class="danger" type="button" :disabled="busy" @click="runConfirmedAction">確定</button>
-          </div>
           <button v-if="!isExpired" class="comic-button pink" type="button" @click="$emit('report')">前往回報</button>
           <p v-else class="readonly">群組已結束，內容會保留查看，但不再接受新的群組回報。</p>
         </template>
@@ -432,6 +461,44 @@ watch(() => props.initialGroupId, async (groupId) => {
         </form>
       </article>
     </div>
+
+    <Teleport to="body">
+      <div v-if="selected && detailModal==='invitation'" class="group-modal" role="dialog" aria-modal="true" aria-labelledby="invitation-title" @click.self="closeDetailModal">
+        <article class="group-dialog comic-panel">
+          <header><h3 id="invitation-title">邀請夥伴</h3><button type="button" aria-label="關閉邀請視窗" @click="closeDetailModal">×</button></header>
+          <section class="invitation-panel">
+            <div class="invite-copy"><span>邀請碼</span><strong>{{ selected.inviteCode }}</strong><small>{{ invitationActive ? '邀請開放中' : '邀請已關閉' }}</small></div>
+            <img v-if="qrDataUrl && invitationActive" :src="qrDataUrl" alt="群組邀請 QR Code">
+            <div class="invite-actions">
+              <button type="button" :disabled="!invitationActive" @click="copyText(selected.inviteCode,'邀請碼已複製。')">複製代碼</button>
+              <button type="button" :disabled="!invitationActive" @click="copyText(shareLink,'邀請連結已複製。')">複製連結</button>
+              <button type="button" :disabled="!invitationActive" @click="shareInvitation">分享邀請</button>
+            </div>
+          </section>
+        </article>
+      </div>
+
+      <div v-if="selected && detailModal==='owner'" class="group-modal" role="dialog" aria-modal="true" aria-labelledby="owner-title" @click.self="closeDetailModal">
+        <article class="group-dialog comic-panel">
+          <header><h3 id="owner-title">群主管理</h3><button type="button" aria-label="關閉群主管理視窗" @click="closeDetailModal">×</button></header>
+          <section class="owner-panel">
+            <div class="owner-actions">
+              <button v-if="!isExpired" type="button" @click="toggleInvitation">{{ invitationActive ? '關閉邀請' : '重新開啟邀請' }}</button>
+              <button v-if="selected.status==='active'" type="button" @click="confirmAction={type:'ended'}">提前結束</button>
+              <button v-if="selected.status!=='archived'" type="button" @click="confirmAction={type:'archived'}">封存群組</button>
+            </div>
+            <h4>成員管理</h4>
+            <div class="member-management"><div v-for="member in details.members" :key="member.id"><span>{{ member.displayName }}<small>{{ member.role==='owner'?'建立者':'成員' }}</small></span><button v-if="member.id!==user.uid" type="button" @click="confirmAction={type:'remove',member}">移除</button></div></div>
+            <div v-if="confirmAction" class="confirm-box">
+              <p v-if="confirmAction.type==='remove'">確定要將「{{ confirmAction.member.displayName }}」移出群組嗎？過去的貢獻會保留。</p>
+              <p v-else-if="confirmAction.type==='ended'">確定提前結束挑戰？結束後不再接受新的群組回報。</p>
+              <p v-else>確定封存群組？內容仍會保留查看。</p>
+              <button type="button" @click="confirmAction=null">取消</button><button class="danger" type="button" :disabled="busy" @click="runConfirmedAction">確定</button>
+            </div>
+          </section>
+        </article>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -447,4 +514,9 @@ watch(() => props.initialGroupId, async (groupId) => {
 @media(max-width:760px){.groups-page{min-height:calc(100svh - 136px);padding-top:12px;padding-bottom:24px}.group-actions{top:auto}}
 .group-jar-stage{grid-template-columns:minmax(0,1fr) minmax(0,250px) minmax(0,1fr);column-gap:8px}.group-jar-stage :deep(.cookie-jar){grid-column:2;width:100%}.group-jar-companion{grid-column:1;grid-row:1;justify-self:end;width:78px;margin-right:0}
 @media(max-width:500px){.group-jar-stage{grid-template-columns:minmax(0,1fr) minmax(0,210px) minmax(0,1fr)}.group-jar-stage :deep(.cookie-jar){width:100%}.group-jar-companion{width:58px}}
+.detail-action-buttons{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:9px;margin:14px 0 2px}.detail-action-buttons button{display:flex;align-items:center;gap:6px;min-height:42px;padding:8px 13px;border:3px solid var(--ink);border-radius:999px;background:var(--yellow);box-shadow:3px 3px 0 var(--ink);font-weight:1000;cursor:pointer}.detail-action-buttons button:last-child{background:var(--blue)}
+.group-main-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.group-main-stats>div{padding:15px;border:3px solid var(--ink);border-radius:17px;background:white;box-shadow:3px 3px 0 var(--ink)}.group-main-stats span,.group-main-stats strong,.group-main-stats small{display:block}.group-main-stats span{color:var(--muted);font-size:.8rem;font-weight:800}.group-main-stats strong{margin-top:4px;color:var(--pink);font-family:var(--font-display);font-size:clamp(2rem,4vw,2.8rem);line-height:1}.group-main-stats small{margin-top:5px;font-weight:1000}.group-meta-stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}.group-meta-stats>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:3px solid var(--ink);border-radius:14px;background:#fff3b3}.group-meta-stats span{color:var(--muted);font-size:.78rem;font-weight:800}.group-meta-stats strong{font-size:.9rem}
+.group-modal{position:fixed;z-index:1000;inset:0;display:grid;place-items:center;padding:20px;background:rgba(32,22,15,.76);backdrop-filter:blur(6px)}.group-dialog{width:min(620px,100%);max-height:min(760px,calc(100svh - 40px));padding:24px;overflow:auto;border-radius:28px}.group-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.group-dialog>header h3{margin:0;font-family:var(--font-display);font-size:1.65rem}.group-dialog>header button{display:grid;place-items:center;width:40px;height:40px;border:3px solid var(--ink);border-radius:50%;background:var(--yellow);box-shadow:3px 3px 0 var(--ink);font-size:1.6rem;font-weight:1000;line-height:1;cursor:pointer}.group-dialog .invitation-panel,.group-dialog .owner-panel{margin:18px 0 0}.group-dialog .owner-panel h4{margin-top:4px}
+@media(max-width:760px){.detail-action-buttons{justify-content:center}.group-main-stats{grid-template-columns:1fr 1fr}.group-meta-stats{grid-template-columns:1fr}.group-dialog{padding:18px}.group-dialog .invitation-panel{grid-template-columns:1fr;text-align:center}.group-dialog .invitation-panel img{justify-self:center}.group-dialog .invite-actions{justify-content:center}}
+@media(max-width:430px){.detail-action-buttons button{flex:1;justify-content:center}.group-main-stats{grid-template-columns:1fr}.group-main-stats strong{font-size:2.2rem}.group-modal{padding:10px}.group-dialog{max-height:calc(100svh - 20px);padding:15px}.group-dialog .owner-panel,.group-dialog .invitation-panel{padding:12px}}
 </style>

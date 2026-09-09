@@ -144,16 +144,24 @@ export function watchMyReports(uid, callback, onError) {
 export function watchFavoriteCards(uid, callback, onError) {
   requireFirebase()
   return onSnapshot(collection(db, 'users', uid, 'favoriteCards'), (snapshot) => {
-    callback(snapshot.docs.map((item) => item.id))
+    callback(snapshot.docs.map((item) => ({
+      favoriteId: item.id,
+      cardId: item.data().cardId || item.id,
+      mascot: item.data().mascot || null,
+    })))
   }, onError)
 }
 
-export async function setFavoriteCard(uid, cardId, favorite) {
+export async function setFavoriteCard(uid, card, favorite) {
   requireFirebase()
+  const cardId = card.cardId || card.id
+  const mascot = card.mascot
   if (!/^[a-z0-9-]{2,50}$/.test(cardId)) throw new Error('卡片資料不正確。')
-  const favoriteRef = doc(db, 'users', uid, 'favoriteCards', cardId)
+  if (!['lion', 'bear', 'phoenix'].includes(mascot) && favorite) throw new Error('卡片角色資料不正確。')
+  const favoriteId = card.favoriteId || `${cardId}--${mascot}`
+  const favoriteRef = doc(db, 'users', uid, 'favoriteCards', favoriteId)
   if (favorite) {
-    await setDoc(favoriteRef, { cardId, createdAt: serverTimestamp() })
+    await setDoc(favoriteRef, { cardId, mascot, createdAt: serverTimestamp() })
   } else {
     await deleteDoc(favoriteRef)
   }

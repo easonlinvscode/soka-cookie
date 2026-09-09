@@ -89,7 +89,7 @@ onUnmounted(() => {
   <section ref="flowSection" class="flow-section">
     <div class="flow-wrap">
       <header class="flow-heading">
-        <span>TAOYUAN WEST PARTY</span>
+        <span>SOKA PARTY</span>
         <h1>烤一塊今天的<br /><strong>幸運餅乾!</strong></h1>
         <p>只要三個步驟，就能把今天的努力加入共同進度。</p>
       </header>

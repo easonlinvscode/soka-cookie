@@ -44,8 +44,20 @@ const displayedContribution = ref(0)
 const displayedMembers = ref(0)
 const displayedPercentage = ref(0)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-const today = new Date().toISOString().slice(0, 10)
-const createForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
+function localDateInputValue(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 10)
+}
+
+function dateAfterToday(days) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return localDateInputValue(date)
+}
+
+const today = localDateInputValue(new Date())
+const defaultEndDate = dateAfterToday(7)
+const createForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: defaultEndDate })
 const editForm = reactive({ name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
 const editing = ref(false)
 const companionOptions = [
@@ -99,9 +111,16 @@ function dateInput(timestamp) {
 }
 function statusLabel(group) {
   if (group.status === 'archived') return '已封存'
-  if (group.status === 'ended' || (group.endDate?.toDate && group.endDate.toDate() < new Date())) return '已結束'
+  if (group.status === 'ended') return '已結束'
+  if (group.endDate?.toDate && group.endDate.toDate() < new Date()) return '已到期'
   return '進行中'
 }
+
+const inactiveMessage = computed(() => {
+  if (selected.value?.status === 'ended') return '群組已提前結束，內容會保留查看，但不再接受新的群組回報。'
+  if (selected.value?.status === 'archived') return '群組已封存，內容會保留查看，但不再接受新的群組回報。'
+  return '群組已達設定日期，內容會保留查看，但不再接受新的群組回報。'
+})
 
 function animateGroupStats() {
   if (reducedMotion.matches) {
@@ -149,7 +168,7 @@ async function handleCreate() {
     message.value = '群組建立完成，邀請碼是 ' + result.inviteCode
     await emit('refresh')
     setMode('list')
-    Object.assign(createForm, { name: '', description: '', targetType: 'chants', targetValue: '', endDate: today })
+    Object.assign(createForm, { name: '', description: '', targetType: 'chants', targetValue: '', endDate: dateAfterToday(7) })
   } catch (reason) { error.value = reason.message || '建立群組失敗。' }
   finally { busy.value = false }
 }
@@ -264,6 +283,14 @@ async function runConfirmedAction() {
       successMessage = action.member.displayName + ' 已移出群組。'
     } else {
       await updateGroupStatus(props.user, selected.value, action.type)
+      if (action.type === 'deleted') {
+        confirmAction.value = null
+        closeDetailModal()
+        await emit('refresh')
+        setMode('list')
+        message.value = '群組已刪除，既有回報資料仍會保留。'
+        return
+      }
       successMessage = action.type === 'ended' ? '群組挑戰已提前結束。' : '群組已封存。'
     }
     confirmAction.value = null
@@ -433,7 +460,7 @@ watch(() => props.initialGroupId, async (groupId) => {
           </section>
 
           <button v-if="!isExpired" class="comic-button pink" type="button" @click="$emit('report')">前往回報</button>
-          <p v-else class="readonly">群組已結束，內容會保留查看，但不再接受新的群組回報。</p>
+          <p v-else class="readonly">{{ inactiveMessage }}</p>
         </template>
         <form v-else class="edit-form" @submit.prevent="saveEdit">
           <button class="back" type="button" @click="showDetail">← 返回群組內容</button>
@@ -486,12 +513,14 @@ watch(() => props.initialGroupId, async (groupId) => {
               <button v-if="!isExpired" type="button" @click="toggleInvitation">{{ invitationActive ? '關閉邀請' : '重新開啟邀請' }}</button>
               <button v-if="selected.status==='active'" type="button" @click="confirmAction={type:'ended'}">提前結束</button>
               <button v-if="selected.status!=='archived'" type="button" @click="confirmAction={type:'archived'}">封存群組</button>
+              <button class="danger-action" type="button" @click="confirmAction={type:'deleted'}">刪除群組</button>
             </div>
             <h4>成員管理</h4>
             <div class="member-management"><div v-for="member in details.members" :key="member.id"><span>{{ member.displayName }}<small>{{ member.role==='owner'?'建立者':'成員' }}</small></span><button v-if="member.id!==user.uid" type="button" @click="confirmAction={type:'remove',member}">移除</button></div></div>
             <div v-if="confirmAction" class="confirm-box">
               <p v-if="confirmAction.type==='remove'">確定要將「{{ confirmAction.member.displayName }}」移出群組嗎？過去的貢獻會保留。</p>
               <p v-else-if="confirmAction.type==='ended'">確定提前結束挑戰？結束後不再接受新的群組回報。</p>
+              <p v-else-if="confirmAction.type==='deleted'">確定刪除「{{ selected.name }}」？群組會從所有成員的清單隱藏、邀請碼立即失效；既有回報資料會保留，但無法從畫面復原。</p>
               <p v-else>確定封存群組？內容仍會保留查看。</p>
               <button type="button" @click="confirmAction=null">取消</button><button class="danger" type="button" :disabled="busy" @click="runConfirmedAction">確定</button>
             </div>
@@ -519,4 +548,5 @@ watch(() => props.initialGroupId, async (groupId) => {
 .group-modal{position:fixed;z-index:1000;inset:0;display:grid;place-items:center;padding:20px;background:rgba(32,22,15,.76);backdrop-filter:blur(6px)}.group-dialog{width:min(620px,100%);max-height:min(760px,calc(100svh - 40px));padding:24px;overflow:auto;border-radius:28px}.group-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.group-dialog>header h3{margin:0;font-family:var(--font-display);font-size:1.65rem}.group-dialog>header button{display:grid;place-items:center;width:40px;height:40px;border:3px solid var(--ink);border-radius:50%;background:var(--yellow);box-shadow:3px 3px 0 var(--ink);font-size:1.6rem;font-weight:1000;line-height:1;cursor:pointer}.group-dialog .invitation-panel,.group-dialog .owner-panel{margin:18px 0 0}.group-dialog .owner-panel h4{margin-top:4px}
 @media(max-width:760px){.detail-action-buttons{justify-content:center}.group-main-stats{grid-template-columns:1fr 1fr}.group-meta-stats{grid-template-columns:1fr}.group-dialog{padding:18px}.group-dialog .invitation-panel{grid-template-columns:1fr;text-align:center}.group-dialog .invitation-panel img{justify-self:center}.group-dialog .invite-actions{justify-content:center}}
 @media(max-width:430px){.detail-action-buttons button{flex:1;justify-content:center}.group-main-stats{grid-template-columns:1fr}.group-main-stats strong{font-size:2.2rem}.group-modal{padding:10px}.group-dialog{max-height:calc(100svh - 20px);padding:15px}.group-dialog .owner-panel,.group-dialog .invitation-panel{padding:12px}}
+.owner-actions .danger-action{background:#ffe1ea;color:#a5003d}
 </style>

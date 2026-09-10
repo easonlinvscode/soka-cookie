@@ -60,7 +60,7 @@ service cloud.firestore {
         && data.ownerId == request.auth.uid
         && data.inviteCode is string
         && data.inviteCode.size() == 8
-        && data.status in ['active', 'ended', 'archived']
+        && data.status in ['active', 'ended', 'archived', 'deleted']
         && (data.status != 'active' || data.endDate >= request.time);
     }
 

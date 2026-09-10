@@ -130,7 +130,9 @@ async function loadGroupProgress() {
       ended: group.status !== 'active' || Boolean(endDate && endDate < new Date()),
       statusLabel: group.status === 'archived'
         ? '群組已封存'
-        : (group.status === 'ended' || (endDate && endDate < new Date()) ? '挑戰已結束' : '挑戰進行中'),
+        : (group.status === 'ended'
+          ? '挑戰已結束'
+          : (endDate && endDate < new Date() ? '挑戰已到期' : '挑戰進行中')),
       justUpdated: props.highlightLatestUpdate && props.latestReport?.groupIds?.includes(group.id),
     })
   })

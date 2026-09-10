@@ -278,7 +278,9 @@ export async function getMyGroups(uid) {
       ? { id: groupSnapshot.id, ...groupSnapshot.data(), status: groupSnapshot.data().status || 'active', membership: membership.data() }
       : null
   }))
-  return groups.filter(Boolean).sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+  return groups
+    .filter((group) => group && group.status !== 'deleted')
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
 }
 
 export async function getGroupDetails(groupId) {
@@ -289,6 +291,7 @@ export async function getGroupDetails(groupId) {
     getDocs(collection(db, 'groups', groupId, 'contributions')),
   ])
   if (!groupSnapshot.exists()) throw new Error('找不到這個群組。')
+  if (groupSnapshot.data().status === 'deleted') throw new Error('這個群組已刪除。')
   return {
     group: { id: groupSnapshot.id, ...groupSnapshot.data(), status: groupSnapshot.data().status || 'active' },
     members: membersSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
@@ -449,7 +452,7 @@ export async function removeGroupMember(user, group, memberId) {
 export async function updateGroupStatus(user, group, status) {
   requireFirebase()
   if (group.ownerId !== user.uid) throw new Error('只有群組建立者可以調整群組狀態。')
-  if (!['active', 'ended', 'archived'].includes(status)) throw new Error('群組狀態不正確。')
+  if (!['active', 'ended', 'archived', 'deleted'].includes(status)) throw new Error('群組狀態不正確。')
   const batch = writeBatch(db)
   batch.update(doc(db, 'groups', group.id), { status, updatedAt: serverTimestamp() })
   if (status !== 'active') {

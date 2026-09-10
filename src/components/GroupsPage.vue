@@ -85,6 +85,7 @@ const leaderboard = computed(() => {
   return [...scores.entries()]
     .map(([userId, amount]) => ({ userId, amount, name: members.get(userId)?.displayName || '已離開成員', active: members.has(userId) }))
     .sort((a, b) => b.amount - a.amount)
+    .slice(0, 10)
 })
 
 function resetFeedback() { error.value = ''; message.value = '' }
@@ -456,7 +457,7 @@ watch(() => props.initialGroupId, async (groupId) => {
 
           <section class="leaderboard">
             <h3>成員貢獻排行</h3>
-            <ol><li v-for="(member,index) in leaderboard" :key="member.userId" :class="{mine:member.userId===user.uid,inactive:!member.active}"><span class="rank">{{ index+1 }}</span><strong>{{ member.name }}</strong><span>{{ member.amount.toLocaleString() }} {{ unitLabel }}</span></li></ol>
+            <ol><li v-for="(member,index) in leaderboard" :key="member.userId" :class="{mine:member.userId===user.uid,inactive:!member.active}"><span class="rank">{{ index+1 }}</span><strong>{{ member.name }}</strong><span>{{ member.userId === user.uid ? member.amount.toLocaleString() : '＊＊＊' }} {{ unitLabel }}</span></li></ol>
           </section>
 
           <button v-if="!isExpired" class="comic-button pink" type="button" @click="$emit('report')">前往回報</button>

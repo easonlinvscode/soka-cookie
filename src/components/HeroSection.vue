@@ -5,10 +5,12 @@ import littleLion from '../assets/characters/little-lion-final.png'
 import phoenixChick from '../assets/characters/phoenix-chick-final.png'
 import littleBear from '../assets/characters/lucky-bear-final.png'
 import CookieParadeIcon from './CookieParadeIcon.vue'
+import SiteGuideModal from './SiteGuideModal.vue'
 
 defineEmits(['report', 'progress'])
 
 const hero = ref(null)
+const guideOpen = ref(false)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 let motionContext
 const cookieShapes = [
@@ -81,6 +83,7 @@ onUnmounted(() => motionContext?.revert())
         <div class="hero-actions">
           <button class="comic-button" type="button" @click="$emit('report')">開始回報 GO!</button>
           <button class="comic-button secondary" type="button" @click="$emit('progress')">查看進度</button>
+          <button class="comic-button guide-button" type="button" aria-haspopup="dialog" @click="guideOpen=true">使用說明</button>
         </div>
       </div>
 
@@ -94,6 +97,8 @@ onUnmounted(() => motionContext?.revert())
     <div class="marquee" aria-hidden="true">
       <div>HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★ HAPPY ★ LUCKY ★ TOGETHER ★ KEEP GOING ★ HAPPY ★ LUCKY ★ TOGETHER ★</div>
     </div>
+
+    <SiteGuideModal v-if="guideOpen" @close="guideOpen=false" @report="guideOpen=false;$emit('report')" />
   </section>
 </template>
 
@@ -177,6 +182,7 @@ h1 strong {
   text-shadow: 2px 2px 0 var(--pink-dark);
 }
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.guide-button{background:var(--blue)}
 .mascot-stage {
   position: absolute;
   z-index: 3;
